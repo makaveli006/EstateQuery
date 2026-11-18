@@ -1,0 +1,40 @@
+# Secrets: never commit
+.env
+.env.*
+!.env.example
+
+# Scraped data and built indexes (rebuilt by the ingestion pipeline)
+data/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Tools and editors
+.playwright-mcp/
+.chainlit/
+.files/
+.idea/
+.vscode/
+*.log
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
