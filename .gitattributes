@@ -1,0 +1,6 @@
+* text=auto
+
+# Shell scripts and git hooks must keep LF endings to run under Git for Windows and in Linux containers
+*.sh text eol=lf
+.githooks/* text eol=lf
+Dockerfile text eol=lf

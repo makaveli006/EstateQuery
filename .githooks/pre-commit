@@ -1,0 +1,20 @@
+#!/bin/sh
+# Versioned pre-commit hook. Enable once per clone with:
+#   git config core.hooksPath .githooks
+#
+# 1. Blocks API keys and .env files.
+# 2. Runs ruff lint and ruff format checks.
+root="$(git rev-parse --show-toplevel)"
+cd "$root" || exit 1
+
+sh scripts/check-secrets.sh staged || exit 1
+
+if ! uv run --no-sync ruff check .; then
+  echo "BLOCKED: ruff lint failed. Fix it, or run: uv run ruff check --fix ." >&2
+  exit 1
+fi
+
+if ! uv run --no-sync ruff format --check .; then
+  echo "BLOCKED: files are not formatted. Run: uv run ruff format ." >&2
+  exit 1
+fi
