@@ -8,3 +8,7 @@ aws_account_id = "123456789012"
 # instance_type = "t3.small"
 # site_host     = "chat.example.com"   # default: <elastic-ip>.sslip.io
 # admin_cidr    = "203.0.113.7/32"     # default: this machine's public IP
+
+# Billing alerts: email address and monthly limit in USD (credits excluded).
+# budget_alert_email = "you@example.com"
+# budget_limit_usd   = 40

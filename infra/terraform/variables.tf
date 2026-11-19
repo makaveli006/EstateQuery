@@ -43,3 +43,20 @@ variable "site_host" {
   type        = string
   default     = ""
 }
+
+variable "budget_alert_email" {
+  description = "Address that receives billing alerts. Empty means no budget is created."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.budget_alert_email == "" || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.budget_alert_email))
+    error_message = "budget_alert_email must be an email address, or empty to skip the budget."
+  }
+}
+
+variable "budget_limit_usd" {
+  description = "Monthly AWS cost, in USD and without credits, that the alerts are measured against."
+  type        = number
+  default     = 40
+}
