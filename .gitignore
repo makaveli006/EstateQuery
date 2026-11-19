@@ -23,6 +23,10 @@ htmlcov/
 .playwright-mcp/
 .chainlit/*
 !.chainlit/config.toml
+# The project's wording overrides; Chainlit regenerates the other languages itself.
+!.chainlit/translations/
+.chainlit/translations/*
+!.chainlit/translations/en-US.json
 .files/
 .idea/
 .vscode/

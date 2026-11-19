@@ -13,6 +13,7 @@ import sqlite3
 from pathlib import Path
 from statistics import median
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from estatequery.config import get_settings
 from estatequery.normalize import canonical_country
@@ -447,13 +448,37 @@ def run_tool(name: str, args: dict[str, Any] | None, db_path: Path | None = None
         conn.close()
 
 
+MAX_SOURCE_LABEL = 60
+
+
+def source_label(title: Any, url: str) -> str:
+    """A short, readable name for a source link.
+
+    Page titles carry a site suffix ("Trump Branded Residences Gulf | DarGlobal Portfolio")
+    and some pages have no title at all, which used to put a raw URL in the sources line.
+    """
+    text = re.sub(r"\s+", " ", str(title or "")).strip()
+    if text.lower().startswith(("http://", "https://", "www.")):
+        text = ""
+    if " | " in text:
+        text = text.split(" | ")[0].strip()
+    if not text:
+        parsed = urlparse(url)
+        slug = parsed.path.strip("/").rsplit("/", 1)[-1]
+        slug = re.sub(r"-\d{4,}$", "", slug)  # trailing listing id
+        text = re.sub(r"[-_]+", " ", slug).strip().title() or parsed.netloc.removeprefix("www.")
+    if len(text) > MAX_SOURCE_LABEL:
+        text = text[: MAX_SOURCE_LABEL - 1].rstrip() + "…"
+    return text
+
+
 def collect_sources(name: str, result: dict[str, Any]) -> list[dict[str, str]]:
     """Pull citeable links out of a tool result for the UI's sources list."""
     found: list[dict[str, str]] = []
 
     def add(title: Any, url: Any) -> None:
         if url:
-            found.append({"title": str(title or url), "url": str(url)})
+            found.append({"title": source_label(title, str(url)), "url": str(url)})
 
     for item in result.get("listings") or []:
         add(item.get("title"), item.get("url"))

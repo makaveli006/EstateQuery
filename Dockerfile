@@ -27,6 +27,7 @@ COPY ${DB_PATH} /app/data/estatequery.db
 
 # Chainlit reads its config, welcome text and static assets from the working directory.
 COPY .chainlit/config.toml /app/.chainlit/config.toml
+COPY .chainlit/translations/en-US.json /app/.chainlit/translations/en-US.json
 COPY chainlit.md /app/chainlit.md
 COPY public /app/public
 RUN mkdir -p /app/.files && chown -R app:app /app/.chainlit /app/.files

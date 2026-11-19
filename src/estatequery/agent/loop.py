@@ -4,8 +4,11 @@
 the browser as server-sent events:
 
   {"type": "delta", "text": ...}                     streamed answer text
-  {"type": "tool_start", "tool": ..., "args": ...}   a tool call began
-  {"type": "tool_end", "tool": ..., "summary": ...}  it finished
+  {"type": "tool_start", "call_id": ..., "tool": ..., "args": ...}        a tool call began
+  {"type": "tool_end", "call_id": ..., "tool": ..., "summary": ..., "ok": bool}  it finished
+
+`call_id` is unique within a turn, so a consumer can pair each start with its finish even
+when the same tool runs several times in parallel.
   {"type": "sources", "items": [...]}                links used in the answer
   {"type": "listings", "items": [...]}               listing rows retrieved, for cards
   {"type": "done", ...}                              final metadata
@@ -88,6 +91,7 @@ async def run_turn(
     started = time.monotonic()
     usage = Usage()
     sources: dict[str, dict[str, str]] = {}
+    source_labels: set[str] = set()
     listings: dict[Any, dict[str, Any]] = {}
     tools_used: list[str] = []
     answer = ""
@@ -143,21 +147,28 @@ async def run_turn(
                 break
 
             rounds += 1
-            for call in done.tool_calls:
-                yield {"type": "tool_start", "tool": call.name, "args": call.args or {}}
+            # Provider call ids can repeat across rounds, so qualify them with the round.
+            call_ids = [f"r{rounds}-{index}-{call.id}" for index, call in enumerate(done.tool_calls)]
+            for call, call_id in zip(done.tool_calls, call_ids):
+                yield {"type": "tool_start", "call_id": call_id, "tool": call.name, "args": call.args or {}}
             spans = [trace.tool(name=c.name, args=c.args) for c in done.tool_calls]
             executed = await asyncio.gather(*(_execute(c, db_path) for c in done.tool_calls))
 
             results: list[ToolResult] = []
-            for call, span, (tool_result, raw) in zip(done.tool_calls, spans, executed):
+            for call, call_id, span, (tool_result, raw) in zip(done.tool_calls, call_ids, spans, executed):
                 results.append(tool_result)
                 tools_used.append(call.name)
                 span.end(output=raw, level="WARNING" if tool_result.is_error else None)
                 for src in collect_sources(call.name, raw):
-                    sources.setdefault(src["url"], src)
+                    # One entry per page, and one per label: two links that read the same
+                    # are noise in the sources line.
+                    if src["url"] not in sources and src["title"].lower() not in source_labels:
+                        sources[src["url"]] = src
+                        source_labels.add(src["title"].lower())
                 for item in raw.get("listings") or []:
                     listings[item.get("id")] = item
-                ended: dict[str, Any] = {"type": "tool_end", "tool": call.name, "summary": summarize(raw)}
+                ended: dict[str, Any] = {"type": "tool_end", "call_id": call_id, "tool": call.name,
+                                         "summary": summarize(raw), "ok": not tool_result.is_error}
                 if emit_tool_results:  # the evaluator needs the evidence the model saw
                     ended.update(args=call.args, result=raw)
                 yield ended
