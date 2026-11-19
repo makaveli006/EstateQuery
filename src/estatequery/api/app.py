@@ -18,8 +18,9 @@ from estatequery import observability
 from estatequery.agent.loop import run_turn
 from estatequery.agent.tools import connect
 from estatequery.api.limits import get_limiter
-from estatequery.config import MODELS, get_model, get_settings
+from estatequery.config import available_models, get_model, get_settings
 from estatequery.ui.identity import COOKIE_MAX_AGE, VISITOR_COOKIE, new_visitor_id, visitor_from_cookie_header
+from estatequery.ui.model_choice import choices, default_model, find_available, model_for
 
 log = logging.getLogger("estatequery.api")
 CHAINLIT_APP = Path(__file__).resolve().parent.parent / "ui" / "chainlit_app.py"
@@ -37,6 +38,10 @@ class ChatRequest(BaseModel):
     model: str | None = None
     session_id: str | None = Field(default=None, max_length=64)
     history: list[HistoryMessage] = Field(default_factory=list, max_length=40)
+
+
+class ModelChoiceRequest(BaseModel):
+    model: str = Field(min_length=3, max_length=120)
 
 
 class FeedbackRequest(BaseModel):
@@ -113,12 +118,29 @@ def create_app() -> FastAPI:
     @app.get("/api/models")
     async def models() -> dict[str, Any]:
         available = [
-            {"id": m.id, "label": m.label, "provider": m.provider, "note": m.note}
-            for m in MODELS
-            if (m.provider == "openrouter" and settings.openrouter_api_key)
-            or (m.provider == "anthropic" and settings.anthropic_api_key)
+            {"id": m.id, "label": m.label, "provider": m.provider, "note": m.note,
+             "description": m.description, "tier": m.tier}
+            for m in available_models()
         ]
-        return {"models": available, "default": get_model(None).id, "dataset": dataset_info()}
+        return {"models": available, "default": default_model().id, "dataset": dataset_info()}
+
+    @app.get("/api/model")
+    async def current_model(request: Request) -> dict[str, Any]:
+        """The model this visitor's chat messages will be answered by."""
+        visitor = visitor_from_cookie_header(request.headers.get("cookie"))
+        return {"model": model_for(visitor).id}
+
+    @app.post("/api/model")
+    async def choose_model(body: ModelChoiceRequest, request: Request) -> JSONResponse:
+        """Set this visitor's model. Takes effect from their next chat message."""
+        spec = find_available(body.model)
+        if spec is None:
+            return JSONResponse({"error": "Unknown or unavailable model."}, status_code=400)
+        visitor = visitor_from_cookie_header(request.headers.get("cookie"))
+        if visitor is None:
+            return JSONResponse({"error": "No visitor cookie; reload the page."}, status_code=409)
+        choices.set(visitor, spec.id)
+        return JSONResponse({"model": spec.id})
 
     @app.post("/api/chat")
     async def chat(body: ChatRequest, request: Request) -> StreamingResponse:

@@ -79,7 +79,9 @@ Design choices worth noting:
 
 ## Models
 
-The model picker (Chainlit chat profiles) offers OpenRouter models (paid and free-tier) and Claude models through the Anthropic API. Adding a model is one entry in `config.py`. The same question can be asked of each model and compared in Langfuse, where every trace is tagged with provider and model.
+A model button in the message box, next to send, shows the current model and opens a menu of models with a one-line description each: Claude through the Anthropic API, paid OpenRouter models, and free-tier OpenRouter models under "More models". Adding a model is one entry in `config.py`. Every Langfuse trace is tagged with provider and model, so the same question can be compared across them.
+
+The picker is a small custom script (`public/model-picker.js`) and not Chainlit's own model switch, for two reasons found in testing. Chainlit's chat profiles restart the chat when changed, which reloads the page and discards a half-typed message. Its chat settings avoid that but hide the choice behind a gear icon. The custom picker posts the choice to `POST /api/model`, where it is stored per visitor and read for each message, so switching changes nothing in the chat: no reload, no reconnect, draft kept.
 
 ## Chat history
 
@@ -152,7 +154,8 @@ src/estatequery/
   ingest/        enrich.py (Claude), build_db.py (SQLite + FTS5)
   agent/         tools.py, prompts.py, loop.py, providers/{openrouter,anthropic}.py
   api/           app.py (FastAPI: JSON/SSE API, mounts the UI), limits.py
-  ui/            chainlit_app.py (Chainlit chat UI, history), identity.py (guest cookie)
+  ui/            chainlit_app.py (Chainlit chat UI, history), identity.py (guest cookie),
+                 model_choice.py (per-visitor model)
   evals/         run.py
 eval/            questions.jsonl, results.md
 tests/           parser, tools, agent loop, rate limiter

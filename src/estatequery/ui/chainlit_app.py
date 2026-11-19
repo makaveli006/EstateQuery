@@ -2,8 +2,9 @@
 
 A thin front end over the same agent loop the JSON API uses: it renders the loop's
 events (streamed text, tool calls, sources) and adds nothing to the agent itself.
-The model is chosen with a chat profile, so the same question can be put to an
-OpenRouter model and to Claude side by side.
+The model is chosen with the picker in the message box (public/model-picker.js) and can
+be changed mid-conversation, so the same question can be put to an OpenRouter model and
+to Claude side by side.
 """
 
 from __future__ import annotations
@@ -17,8 +18,9 @@ import chainlit as cl
 from estatequery import observability
 from estatequery.agent.loop import run_turn
 from estatequery.api.limits import get_limiter
-from estatequery.config import MODELS, ModelSpec, get_model, get_settings
+from estatequery.config import get_settings
 from estatequery.ui.identity import guest_identifier, new_visitor_id, visitor_from_cookie_header
+from estatequery.ui.model_choice import model_for
 
 TOOL_LABELS = {
     "search_listings": "Search Wasalt listings",
@@ -43,20 +45,13 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 HISTORY_ENABLED = bool(DATABASE_URL)
 
 
-def available_models() -> list[ModelSpec]:
-    settings = get_settings()
-    return [
-        m for m in MODELS
-        if (m.provider == "openrouter" and settings.openrouter_api_key)
-        or (m.provider == "anthropic" and settings.anthropic_api_key)
-    ]
-
-
-def spec_for_profile(profile_name: str | None) -> ModelSpec:
-    for model in available_models():
-        if model.label == profile_name:
-            return model
-    return get_model(None)
+def visitor_id() -> str | None:
+    """The anonymous visitor behind this chat session, from the cookie sent when it connected."""
+    try:
+        environ = cl.context.session.environ or {}
+        return visitor_from_cookie_header(environ.get("HTTP_COOKIE"))
+    except Exception:  # noqa: BLE001 - no request context (tests, background tasks)
+        return None
 
 
 def client_ip() -> str:
@@ -69,19 +64,6 @@ def client_ip() -> str:
     except Exception:  # noqa: BLE001 - no request context (tests, background tasks)
         pass
     return str(cl.user_session.get("id") or "unknown")
-
-
-@cl.set_chat_profiles
-async def chat_profiles(*_: Any, **__: Any) -> list[cl.ChatProfile]:
-    default_id = get_model(None).id
-    return [
-        cl.ChatProfile(
-            name=m.label,
-            markdown_description=f"**{m.label}** through the {m.note}.",
-            default=(m.id == default_id),
-        )
-        for m in available_models()
-    ]
 
 
 @cl.set_starters
@@ -97,7 +79,7 @@ async def on_chat_start() -> None:
 @cl.on_message
 async def on_message(message: cl.Message) -> None:
     settings = get_settings()
-    spec = spec_for_profile(cl.user_session.get("chat_profile"))
+    spec = model_for(visitor_id())
     text = (message.content or "").strip()
     if not text:
         return

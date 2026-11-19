@@ -63,73 +63,31 @@ class ModelSpec:
     id: str  # "<provider>:<api model name>", used by the UI and API
     provider: str  # "openrouter" | "anthropic"
     api_model: str  # the name sent to the provider
-    label: str  # shown in the dropdown
-    note: str = ""
+    label: str  # shown in the model picker
+    note: str = ""  # where it is served from, shown next to the label
     # USD per million tokens (input, output); used only for cost estimates in the eval report.
     price_in: float = 0.0
     price_out: float = 0.0
+    description: str = ""  # one line under the label in the picker
+    tier: str = "main"  # "main" models are listed first; "more" sit behind "More models"
 
 
 MODELS: list[ModelSpec] = [
-    ModelSpec(
-        "openrouter:deepseek/deepseek-v4-flash",
-        "openrouter",
-        "deepseek/deepseek-v4-flash",
-        "DeepSeek V4 Flash",
-        "OpenRouter",
-        0.09,
-        0.18,
-    ),
-    ModelSpec(
-        "openrouter:google/gemini-3.8-flash",
-        "openrouter",
-        "google/gemini-3.8-flash",
-        "Gemini 3.8 Flash",
-        "OpenRouter",
-        0.83,
-        4.12,
-    ),
-    ModelSpec(
-        "openrouter:google/gemma-4-31b-it:free",
-        "openrouter",
-        "google/gemma-4-31b-it:free",
-        "Gemma 4 31B (free)",
-        "OpenRouter free tier",
-    ),
-    ModelSpec(
-        "openrouter:nvidia/nemotron-3-ultra-550b-a55b:free",
-        "openrouter",
-        "nvidia/nemotron-3-ultra-550b-a55b:free",
-        "Nemotron 3 Ultra (free)",
-        "OpenRouter free tier",
-    ),
-    ModelSpec(
-        "anthropic:claude-sonnet-5-5",
-        "anthropic",
-        "claude-sonnet-5-5",
-        "Claude Sonnet 5.5",
-        "Anthropic API",
-        2.0,
-        10.0,
-    ),
-    ModelSpec(
-        "anthropic:claude-opus-5-5",
-        "anthropic",
-        "claude-opus-5-5",
-        "Claude Opus 5.5",
-        "Anthropic API",
-        4.0,
-        20.0,
-    ),
-    ModelSpec(
-        "anthropic:claude-haiku-5-5",
-        "anthropic",
-        "claude-haiku-5-5",
-        "Claude Haiku 5.5",
-        "Anthropic API",
-        0.10,
-        0.50,
-    ),
+    ModelSpec("anthropic:claude-sonnet-5-5", "anthropic", "claude-sonnet-5-5", "Claude Sonnet 5.5",
+              "Anthropic", 2.0, 10.0, "Balanced: accurate and quick"),
+    ModelSpec("anthropic:claude-opus-5-5", "anthropic", "claude-opus-5-5", "Claude Opus 5.5",
+              "Anthropic", 4.0, 20.0, "Most thorough, slower"),
+    ModelSpec("anthropic:claude-haiku-5-5", "anthropic", "claude-haiku-5-5", "Claude Haiku 5.5",
+              "Anthropic", 0.10, 0.50, "Fastest answers"),
+    ModelSpec("openrouter:deepseek/deepseek-v4-flash", "openrouter", "deepseek/deepseek-v4-flash",
+              "DeepSeek V4 Flash", "OpenRouter", 0.09, 0.18, "Low-cost model via OpenRouter"),
+    ModelSpec("openrouter:google/gemini-3.8-flash", "openrouter", "google/gemini-3.8-flash",
+              "Gemini 3.8 Flash", "OpenRouter", 0.83, 4.12, "Fast general model via OpenRouter"),
+    ModelSpec("openrouter:google/gemma-4-31b-it:free", "openrouter", "google/gemma-4-31b-it:free",
+              "Gemma 4 31B", "OpenRouter", 0.0, 0.0, "Free tier, may be unavailable", "more"),
+    ModelSpec("openrouter:nvidia/nemotron-3-ultra-550b-a55b:free", "openrouter",
+              "nvidia/nemotron-3-ultra-550b-a55b:free", "Nemotron 3 Ultra", "OpenRouter", 0.0, 0.0,
+              "Free tier, may be unavailable", "more"),
 ]
 
 MODELS_BY_ID: dict[str, ModelSpec] = {m.id: m for m in MODELS}
@@ -141,3 +99,13 @@ def get_model(model_id: str | None) -> ModelSpec:
     if model_id and model_id in MODELS_BY_ID:
         return MODELS_BY_ID[model_id]
     return MODELS_BY_ID.get(settings.default_model, MODELS[0])
+
+
+def available_models() -> list[ModelSpec]:
+    """Models whose provider has an API key configured, in display order."""
+    settings = get_settings()
+    return [
+        m for m in MODELS
+        if (m.provider == "openrouter" and settings.openrouter_api_key)
+        or (m.provider == "anthropic" and settings.anthropic_api_key)
+    ]
