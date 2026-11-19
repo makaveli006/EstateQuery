@@ -11,6 +11,12 @@
 (() => {
   "use strict";
 
+  // Chainlit loads only one custom script, so the sidebar layout (shell.js) is loaded from here.
+  const shell = document.createElement("script");
+  shell.src = "/public/shell.js?v=20261120";
+  shell.defer = true;
+  document.head.appendChild(shell);
+
   const STORAGE_KEY = "eq-model";
   const CHIP_ID = "eq-model-chip";
   const MENU_ID = "eq-model-menu";

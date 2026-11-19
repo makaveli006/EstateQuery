@@ -118,6 +118,14 @@ The registry in `config.py` holds more models than the menu shows: Claude Opus 5
 
 The picker is a small custom script (`public/model-picker.js`) and not Chainlit's own model switch, for two reasons found in testing. Chainlit's chat profiles restart the chat when changed, which reloads the page and discards a half-typed message. Its chat settings avoid that but hide the choice behind a gear icon. The custom picker posts the choice to `POST /api/model`, where it is stored per visitor and read for each message, so switching changes nothing in the chat: no reload, no reconnect, draft kept.
 
+## Interface
+
+The chat uses a ChatGPT-style layout: the logo at the top of the sidebar, a New chat row, Scheduled, Library, Plugins and Explore rows marked "Soon", a Projects section, the conversation history under Recents, and a profile block at the bottom. The greeting on the start page is "How can I help, DarGlobal Team?".
+
+Only New chat, search, collapse and the conversation history are real. The "Soon" rows, the example project ("Branded Residences") and the "DarGlobal / Plus" profile are placeholders for the demo: they are visibly inert and do nothing.
+
+It is built with CSS and a small script (`public/shell.css`, `public/shell.js`, loaded from `model-picker.js`) on top of Chainlit's own sidebar. The script keeps its elements in place if the sidebar re-renders, and does nothing if the expected markup is missing, so the worst case is the standard sidebar. `tests/test_shell_ui.py` runs it in headless Chromium against a copy of Chainlit's sidebar markup.
+
 ## Tool activity in the chat
 
 Every tool call of a turn is shown in one collapsible **Research activity** section above the answer, with a row per execution (repeated and parallel calls each get their own row) marked ✓, ✗ failed or ✗ interrupted. It is open while the agent works and collapses when the answer is complete.
@@ -285,6 +293,7 @@ tests/           parser, importer, collector userscript, tools, validation, agen
                  fallback, prompts, evaluation gate, retrieval, rate limiter
 .github/         workflows/ci.yml (tests on every push)
 tools/           wasalt-collector.user.js (browser userscript for hand collection)
+public/          logo and avatar, model picker, sidebar layout (shell.css, shell.js)
 infra/terraform/ AWS infrastructure (EC2, security group, Elastic IP, cost budget)
 deploy/          deploy.sh (build, ship, start), chat_history_schema.sql
 ```

@@ -2,6 +2,9 @@
    Colours come from Chainlit's theme variables, so it follows dark and light mode.
    The accent is the teal of the EstateQuery logo. */
 
+/* Sidebar, greeting and profile layout (Chainlit allows only one custom stylesheet). */
+@import url("/public/shell.css?v=20261120");
+
 :root {
   --eq-teal: 168 78% 34%;
 }

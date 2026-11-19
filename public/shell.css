@@ -1,0 +1,177 @@
+/* ChatGPT-style layout for the EstateQuery chat UI.
+ *
+ * What lives here: the sidebar header (logo, search, collapse), the greeting on the welcome screen,
+ * the navigation rows and profile that shell.js injects, and a flat "Recents" list.
+ * Colours come from Chainlit's theme variables, so it follows dark and light mode.
+ * Loaded from model-picker.css (Chainlit allows only one custom stylesheet).
+ *
+ * The Scheduled, Library, Plugins and Explore rows, the project and the "Plus" plan are placeholders:
+ * they are shown for effect and do nothing.
+ */
+
+/* ------------------------------------------------------ sidebar header: logo left, tools right */
+
+[data-sidebar="header"] > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+}
+/* The logo takes the position of ChatGPT's title. */
+[data-sidebar="header"] > div:first-child::before {
+  content: "";
+  flex: 1 1 auto;
+  order: 0;
+  height: 30px;
+  min-width: 110px;
+  margin-left: 6px;
+  background: url("/public/logo.png") left center / contain no-repeat;
+}
+:root:not(.dark) [data-sidebar="header"] > div:first-child::before { filter: saturate(1.15) brightness(0.82); }
+/* Search, then the collapse button, at the right edge. */
+[data-sidebar="header"] > div:first-child > :nth-child(2) { order: 1; }
+[data-sidebar="header"] > div:first-child > :nth-child(1) { order: 2; }
+/* "New chat" is a full row below; Chainlit's own button stays in the page so the row can use it. */
+#new-chat-button { display: none; }
+
+/* ------------------------------------------------------ welcome screen */
+
+#welcome-screen img.logo { display: none !important; }
+#welcome-screen::before {
+  content: "How can I help, DarGlobal Team?";
+  display: block;
+  padding: 0 16px 6px;
+  text-align: center;
+  font-size: clamp(1.5rem, 3.6vw, 2rem);
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: hsl(var(--foreground));
+}
+
+/* One identity: the profile is at the bottom of the sidebar, so the guest avatar goes. */
+#user-nav-button { display: none; }
+
+/* ------------------------------------------------------ injected navigation */
+
+#eq-shell {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px 0;
+}
+
+.eq-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: hsl(var(--sidebar-foreground));
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  text-align: left;
+  user-select: none;
+}
+.eq-row svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: hsl(var(--sidebar-foreground));
+}
+.eq-row:hover { background: hsl(var(--sidebar-accent)); }
+button.eq-row { cursor: pointer; }
+.eq-row[aria-disabled="true"] { cursor: default; }
+.eq-row:focus-visible {
+  outline: 2px solid hsl(var(--eq-teal, 168 78% 34%));
+  outline-offset: -2px;
+}
+
+/* New chat: the highlighted row, as in ChatGPT. */
+.eq-row-primary { background: hsl(var(--sidebar-accent)); font-weight: 500; }
+
+.eq-soon {
+  margin-left: auto;
+  padding: 3px 7px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.eq-heading {
+  padding: 18px 10px 6px 16px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
+}
+.eq-heading-recents { padding-top: 22px; }
+
+/* ------------------------------------------------------ Recents: one flat list */
+
+/* The "Today", "Yesterday" ... buckets are replaced by a single "Recents" heading above them. */
+#thread-history [data-sidebar="group-label"] { display: none; }
+#thread-history [data-sidebar="group"],
+[data-sidebar="content"] > [data-sidebar="group"] { padding-top: 0; padding-bottom: 0; }
+
+/* The empty state is quiet text, not Chainlit's blue notice box. */
+#thread-history > [role="status"].alert {
+  margin: 0;
+  padding: 6px 10px 6px 16px;
+  border: 0;
+  background: transparent;
+}
+#thread-history > [role="status"].alert svg { display: none; }
+#thread-history > [role="status"].alert .ml-3 { margin-left: 0; }
+#thread-history > [role="status"].alert p {
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------ profile, bottom of the sidebar */
+
+#eq-profile {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 8px 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: hsl(var(--sidebar-foreground));
+  user-select: none;
+}
+#eq-profile:hover { background: hsl(var(--sidebar-accent)); }
+.eq-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: hsl(var(--eq-teal, 168 78% 34%));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.eq-profile-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.eq-profile-name { font-size: 14px; font-weight: 500; line-height: 1.1; }
+.eq-profile-plan { color: hsl(var(--muted-foreground)); font-size: 12px; line-height: 1.1; }
+
+@media (max-width: 480px) {
+  #welcome-screen::before { font-size: 1.5rem; }
+}

@@ -58,7 +58,7 @@
   },
   "chat": {
     "input": {
-      "placeholder": "Type your message here...",
+      "placeholder": "Ask EstateQuery",
       "actions": {
         "send": "Send message",
         "stop": "Stop Task",
@@ -147,7 +147,7 @@
         "previous7days": "Previous 7 days",
         "previous30days": "Previous 30 days"
       },
-      "empty": "No threads found",
+      "empty": "No chats yet",
       "actions": {
         "close": "Close sidebar",
         "open": "Open sidebar"
