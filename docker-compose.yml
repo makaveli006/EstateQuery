@@ -35,6 +35,10 @@ services:
     image: caddy:2-alpine
     environment:
       SITE_HOST: ${SITE_HOST:-localhost}
+      # The site is behind a login. Both values are required: if either is missing the stack
+      # refuses to start, so it can never come up open by accident.
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER:?set BASIC_AUTH_USER in .env}
+      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH:?set BASIC_AUTH_HASH in .env (a bcrypt hash, single-quoted)}
     ports:
       - "80:80"
       - "443:443"

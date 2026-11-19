@@ -1,10 +1,22 @@
-# Caddy obtains and renews the TLS certificate for SITE_HOST automatically.
+# Caddy obtains and renews the TLS certificate for SITE_HOST automatically, and puts the whole
+# site behind a username and password (HTTP Basic Auth). Only a bcrypt hash of the password is
+# kept, in the server's .env as BASIC_AUTH_HASH; see README "Access control".
 {$SITE_HOST:localhost} {
+	# Everything is gated except the health endpoint, which only reports dataset counts and is
+	# what the deploy script and uptime checks poll. The certificate challenge and the
+	# http-to-https redirect are handled by Caddy before this site block is reached.
+	@gated not path /healthz
+	basic_auth @gated bcrypt "EstateQuery" {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
 	# Compress everything except the chat stream, which must reach the browser unbuffered.
 	@static not path /api/chat
 	encode @static zstd gzip
 
 	reverse_proxy app:8000 {
 		flush_interval -1
+		# The application never needs the login; do not hand it the credentials.
+		header_up -Authorization
 	}
 }

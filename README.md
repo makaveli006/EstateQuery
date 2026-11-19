@@ -2,7 +2,7 @@
 
 An agentic real-estate assistant that answers questions about **DarGlobal projects** and **Wasalt property listings**, grounded in public data scraped from both sites. It runs on any OpenRouter model or on Claude through the Anthropic API, switchable in the UI.
 
-**Live demo:** https://54-206-148-173.sslip.io
+**Live demo:** https://54-206-148-173.sslip.io (password protected: the username and password are sent with the submission)
 
 Built for the DarGlobal *Senior AI Engineer – Agentic Systems* technical assignment.
 
@@ -135,6 +135,17 @@ uv run estatequery build-db
 uv run estatequery serve                          # chat UI at http://127.0.0.1:8000
 uv run pytest
 ```
+
+## Access control
+
+The demo is public on the internet and calls paid model APIs, so the whole site sits behind a username and password. It is HTTP Basic Auth in Caddy, the reverse proxy in front of the app, and covers the chat page, the chat websocket and the JSON API, including `POST /api/chat`, which would otherwise spend the model keys. Only `/healthz` stays open; it reports dataset counts and is what the deploy script polls.
+
+- **Browser prompt.** Visitors get the browser's own sign-in dialog once per session. It is not a styled login page; one would need a login screen plus a signed session cookie, which is custom security code and was left out on purpose.
+- **Credentials are not in the repository.** Only a bcrypt hash is stored, as `BASIC_AUTH_HASH` (single-quoted, since it contains `$`) in the server's `.env`, with the username in `BASIC_AUTH_USER`. Compose treats both as required, so the stack refuses to start rather than come up open.
+- **The app never sees the login.** Caddy removes the `Authorization` header before proxying.
+- **Still one history per browser.** Everyone shares the login, but each browser keeps its own chat history through the anonymous visitor cookie.
+- **Deploy check.** `deploy/deploy.sh` fails unless a request with no credentials gets a 401.
+- **Rotating the password.** Run `caddy hash-password`, put the new hash in `.env` as `BASIC_AUTH_HASH='...'`, and run `deploy/deploy.sh`.
 
 ## Docker and deployment
 

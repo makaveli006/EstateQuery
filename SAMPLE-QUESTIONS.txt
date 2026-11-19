@@ -2,6 +2,7 @@ ESTATEQUERY: SAMPLE QUESTIONS
 =============================
 
 Live demo: https://54-206-148-173.sslip.io
+Login:     username darglobal, password sent separately with this file (your browser asks for it once).
 
 Paste any of these into the chat. Each one is based on data that is actually loaded, so it
 has a real answer, and each shows a different part of the agent. The model button in the

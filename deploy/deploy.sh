@@ -56,7 +56,19 @@ ssh "${SSH_OPTS[@]}" "$REMOTE" 'cd /opt/estatequery && chmod 600 .env && docker 
 
 echo "== checking https://$SITE_HOST/healthz"
 for _ in $(seq 1 30); do
-  if curl -fsS -m 10 "https://$SITE_HOST/healthz"; then echo; echo "live: https://$SITE_HOST"; exit 0; fi
+  if curl -fsS -m 10 "https://$SITE_HOST/healthz"; then
+    echo
+    # The site must be behind its login. If a request with no credentials is let in, the gate
+    # is not active, so do not report success.
+    gate="$(curl -s -o /dev/null -w '%{http_code}' -m 10 "https://$SITE_HOST/")"
+    if [ "$gate" != "401" ]; then
+      echo "WARNING: https://$SITE_HOST/ answered $gate without credentials, expected 401. The site is NOT password protected." >&2
+      exit 1
+    fi
+    echo "login required: yes (401 without credentials)"
+    echo "live: https://$SITE_HOST"
+    exit 0
+  fi
   sleep 6
 done
 echo "the site did not answer over HTTPS yet; check: ssh ${SSH_OPTS[*]} $REMOTE 'cd /opt/estatequery && docker compose logs --tail 50'" >&2
