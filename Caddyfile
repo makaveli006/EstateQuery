@@ -1,0 +1,10 @@
+# Caddy obtains and renews the TLS certificate for SITE_HOST automatically.
+{$SITE_HOST:localhost} {
+	# Compress everything except the chat stream, which must reach the browser unbuffered.
+	@static not path /api/chat
+	encode @static zstd gzip
+
+	reverse_proxy app:8000 {
+		flush_interval -1
+	}
+}

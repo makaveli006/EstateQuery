@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+
+# The only AWS account this stack may be applied to.
+aws_account_id = "123456789012"
+
+# Optional overrides:
+# region        = "ap-southeast-2"
+# instance_type = "t3.small"
+# site_host     = "chat.example.com"   # default: <elastic-ip>.sslip.io
+# admin_cidr    = "203.0.113.7/32"     # default: this machine's public IP

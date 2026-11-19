@@ -1,0 +1,52 @@
+services:
+  app:
+    image: ${APP_IMAGE:-estatequery:latest}
+    build: .
+    env_file: .env          # API keys and Langfuse settings; never baked into the image
+    environment:
+      DATA_DIR: /app/data
+      # Chat history lives in the db service; the password comes from .env
+      DATABASE_URL: postgresql://estatequery:${POSTGRES_PASSWORD}@db:5432/estatequery
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: estatequery
+      POSTGRES_DB: estatequery
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pg_data:/var/lib/postgresql/data   # conversations survive restarts and redeploys
+      # Runs once, when the volume is empty, to create Chainlit's tables.
+      - ./deploy/chat_history_schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estatequery -d estatequery"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      SITE_HOST: ${SITE_HOST:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data     # TLS certificates survive restarts
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
