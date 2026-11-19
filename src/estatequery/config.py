@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     # Where scraped data and the built SQLite database live.
     data_dir: Path = Path("data")
 
-    # Model shown first in the UI. Must be an id from MODELS.
-    default_model: str = "openrouter:deepseek/deepseek-v4-flash"
+    # Model every visitor starts on. Must be an id from MODELS that is listed.
+    default_model: str = "anthropic:claude-sonnet-5-5"
 
     # Abuse protection for the public URL.
     rate_limit_per_minute: int = 10
@@ -70,24 +70,30 @@ class ModelSpec:
     price_out: float = 0.0
     description: str = ""  # one line under the label in the picker
     tier: str = "main"  # "main" models are listed first; "more" sit behind "More models"
+    # False hides the model from the picker and from visitors' choices. The model stays in the
+    # registry, so code that names it (the JSON API, evaluations) still works, and showing it
+    # again is a one-word change here.
+    listed: bool = True
 
 
 MODELS: list[ModelSpec] = [
+    # Shown in the picker, in this order. The first is the default.
     ModelSpec("anthropic:claude-sonnet-5-5", "anthropic", "claude-sonnet-5-5", "Claude Sonnet 5.5",
               "Anthropic", 2.0, 10.0, "Balanced: accurate and quick"),
-    ModelSpec("anthropic:claude-opus-5-5", "anthropic", "claude-opus-5-5", "Claude Opus 5.5",
-              "Anthropic", 4.0, 20.0, "Most thorough, slower"),
     ModelSpec("anthropic:claude-haiku-5-5", "anthropic", "claude-haiku-5-5", "Claude Haiku 5.5",
               "Anthropic", 0.10, 0.50, "Fastest answers"),
+    # Kept in the registry but not offered in the UI (listed=False).
+    ModelSpec("anthropic:claude-opus-5-5", "anthropic", "claude-opus-5-5", "Claude Opus 5.5",
+              "Anthropic", 4.0, 20.0, "Most thorough, slower", listed=False),
     ModelSpec("openrouter:deepseek/deepseek-v4-flash", "openrouter", "deepseek/deepseek-v4-flash",
-              "DeepSeek V4 Flash", "OpenRouter", 0.09, 0.18, "Low-cost model via OpenRouter"),
+              "DeepSeek V4 Flash", "OpenRouter", 0.09, 0.18, "Low-cost model via OpenRouter", listed=False),
     ModelSpec("openrouter:google/gemini-3.8-flash", "openrouter", "google/gemini-3.8-flash",
-              "Gemini 3.8 Flash", "OpenRouter", 0.83, 4.12, "Fast general model via OpenRouter"),
+              "Gemini 3.8 Flash", "OpenRouter", 0.83, 4.12, "Fast general model via OpenRouter", listed=False),
     ModelSpec("openrouter:google/gemma-4-31b-it:free", "openrouter", "google/gemma-4-31b-it:free",
-              "Gemma 4 31B", "OpenRouter", 0.0, 0.0, "Free tier, may be unavailable", "more"),
+              "Gemma 4 31B", "OpenRouter", 0.0, 0.0, "Free tier, may be unavailable", "more", listed=False),
     ModelSpec("openrouter:nvidia/nemotron-3-ultra-550b-a55b:free", "openrouter",
               "nvidia/nemotron-3-ultra-550b-a55b:free", "Nemotron 3 Ultra", "OpenRouter", 0.0, 0.0,
-              "Free tier, may be unavailable", "more"),
+              "Free tier, may be unavailable", "more", listed=False),
 ]
 
 MODELS_BY_ID: dict[str, ModelSpec] = {m.id: m for m in MODELS}
@@ -109,3 +115,8 @@ def available_models() -> list[ModelSpec]:
         if (m.provider == "openrouter" and settings.openrouter_api_key)
         or (m.provider == "anthropic" and settings.anthropic_api_key)
     ]
+
+
+def listed_models() -> list[ModelSpec]:
+    """The models a visitor can see and pick: available, and not hidden from the UI."""
+    return [m for m in available_models() if m.listed]

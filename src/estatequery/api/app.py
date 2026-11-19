@@ -18,7 +18,7 @@ from estatequery import observability
 from estatequery.agent.loop import run_turn
 from estatequery.agent.tools import connect
 from estatequery.api.limits import get_limiter
-from estatequery.config import available_models, get_model, get_settings
+from estatequery.config import get_model, get_settings, listed_models
 from estatequery.ui.identity import COOKIE_MAX_AGE, VISITOR_COOKIE, new_visitor_id, visitor_from_cookie_header
 from estatequery.ui.model_choice import choices, default_model, find_available, model_for
 
@@ -120,7 +120,7 @@ def create_app() -> FastAPI:
         available = [
             {"id": m.id, "label": m.label, "provider": m.provider, "note": m.note,
              "description": m.description, "tier": m.tier}
-            for m in available_models()
+            for m in listed_models()
         ]
         return {"models": available, "default": default_model().id, "dataset": dataset_info()}
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 
-from estatequery.config import ModelSpec, available_models, get_model
+from estatequery.config import ModelSpec, get_model, listed_models
 
 
 class ModelChoices:
@@ -42,16 +42,18 @@ choices = ModelChoices()
 
 
 def find_available(model_id: str | None) -> ModelSpec | None:
-    """The model with this id, if it exists and its provider is configured."""
-    return next((m for m in available_models() if m.id == model_id), None)
+    """The model with this id, if a visitor may use it: it exists, its provider is configured
+    and it is listed. A model hidden from the UI is refused here, so a stale choice (one made
+    before it was hidden) cannot keep a visitor on a model the picker no longer shows."""
+    return next((m for m in listed_models() if m.id == model_id), None)
 
 
 def default_model() -> ModelSpec:
-    models = available_models()
+    models = listed_models()
     preferred = get_model(None)
     return preferred if preferred in models or not models else models[0]
 
 
 def model_for(visitor_id: str | None) -> ModelSpec:
-    """The visitor's chosen model, or the default if they have not chosen (or it went away)."""
+    """The visitor's chosen model, or the default if they have not chosen (or it is no longer offered)."""
     return find_available(choices.get(visitor_id)) or default_model()
