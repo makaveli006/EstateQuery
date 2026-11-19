@@ -47,6 +47,8 @@ def summarize(result: dict[str, Any]) -> str:
         return f"{len(result['groups'])} groups from {result.get('total_listings', 0)} listings"
     if "passages" in result:
         return f"{result.get('returned', 0)} passages"
+    if "by_brand" in result:
+        return f"{result.get('count', 0)} projects"
     if "projects" in result:
         return f"{result.get('count', 0)} projects"
     return "found"

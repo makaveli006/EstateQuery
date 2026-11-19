@@ -54,7 +54,7 @@ class Limiter:
                             retry_after=3600)
         cap = self.provider_caps.get(provider)
         if cap is not None and self._provider[provider] >= cap:
-            return Decision(False, "This model provider has reached today's demo budget. Try another model.",
+            return Decision(False, "Today's demo budget has been used up. Please try again tomorrow.",
                             retry_after=3600)
 
         window.append(now)

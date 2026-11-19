@@ -21,6 +21,9 @@ from estatequery.normalize import canonical_country
 WASALT_SOURCE = "Wasalt.sa"
 MAX_LISTINGS = 8
 MAX_PASSAGES = 6
+# A project list longer than this is returned as a compact view. It sits below the agent loop's
+# cut-off for tool results (loop.MAX_TOOL_RESULT_CHARS), so a list is never cut off partway.
+LIST_BUDGET_CHARS = 6000
 STOPWORDS = {
     "a", "an", "the", "in", "on", "at", "of", "for", "to", "and", "or", "with", "is", "are",
     "what", "which", "who", "how", "does", "do", "about", "tell", "me", "any", "there", "by",
@@ -224,6 +227,61 @@ def get_listing(conn: sqlite3.Connection, args: dict[str, Any]) -> dict[str, Any
     return record
 
 
+NO_PARTNER = "(no partner)"
+
+
+def group_by_brand(projects: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Group projects under their brand partner: name, country and link only.
+
+    Named brands come first in alphabetical order, projects without a partner last.
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for project in projects:
+        item: dict[str, Any] = {"name": project.get("name")}
+        if project.get("country"):
+            item["country"] = project["country"]
+        item["url"] = project.get("url")
+        groups.setdefault(project.get("brand_partner") or NO_PARTNER, []).append(item)
+    return dict(sorted(groups.items(), key=lambda entry: (entry[0] == NO_PARTNER, entry[0].lower())))
+
+
+def compact_project_view(projects: list[dict[str, Any]]) -> dict[str, Any]:
+    """Every project grouped by brand, small enough to pass the agent loop untruncated.
+
+    If even the compact form is over budget (many projects, long names), the country is
+    dropped first and then whole projects are left out, with the number omitted stated in the
+    result, so the model is never handed a list that stops silently halfway.
+    """
+    note = ("The full list is long, so this is a compact view: every project, grouped by brand "
+            "partner, with its country and link. For status, property types, price or amenities, "
+            "filter by country, property_type or brand, or call get_darglobal_project.")
+    view: dict[str, Any] = {
+        "count": len(projects),
+        "view": "compact, grouped by brand partner",
+        "by_brand": group_by_brand(projects),
+        "note": note,
+        "source": "darglobal.co.uk",
+    }
+
+    def too_long() -> bool:
+        return len(json.dumps(view, ensure_ascii=False)) > LIST_BUDGET_CHARS
+
+    if too_long():
+        for items in view["by_brand"].values():
+            for item in items:
+                item.pop("country", None)
+    omitted = 0
+    while too_long() and view["by_brand"]:
+        largest = max(view["by_brand"].values(), key=len)
+        largest.pop()
+        omitted += 1
+        view["by_brand"] = {brand: items for brand, items in view["by_brand"].items() if items}
+        view["omitted"] = omitted
+        view["note"] = (f"{note} {omitted} more projects are not shown because the list is long; "
+                        "filter by country, property_type or brand to see them.")
+    return view
+
+
 def list_darglobal_projects(conn: sqlite3.Connection, args: dict[str, Any]) -> dict[str, Any]:
     where: list[str] = []
     params: list[Any] = []
@@ -243,7 +301,14 @@ def list_darglobal_projects(conn: sqlite3.Connection, args: dict[str, Any]) -> d
         params,
     ).fetchall()
     if rows:
-        return {"count": len(rows), "projects": [clean_number(r) for r in rows], "source": "darglobal.co.uk"}
+        projects = [clean_number(r) for r in rows]
+        full = {"count": len(rows), "projects": projects, "source": "darglobal.co.uk"}
+        if len(json.dumps(full, ensure_ascii=False)) <= LIST_BUDGET_CHARS:
+            return full
+        # Too long to show in full: the agent loop cuts tool results at a fixed size, and a list
+        # cut off partway made answers about the whole portfolio incomplete. A compact view that
+        # keeps every project, with its brand, country and link, fits and costs fewer tokens.
+        return compact_project_view(projects)
 
     # No structured facts (or nothing matched): fall back to project page titles.
     filters = [str(args[k]) for k in ("country", "property_type", "brand") if args.get(k)]
@@ -381,7 +446,9 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "name": "list_darglobal_projects",
         "description": (
             "List DarGlobal development projects, optionally filtered by country, property type or brand "
-            "partner. Use for overview questions such as 'what projects does DarGlobal have in Oman'."
+            "partner. Use for overview questions such as 'what projects does DarGlobal have in Oman' or "
+            "'which brands does DarGlobal partner with'. A long list (for example with no filter) comes "
+            "back as a compact view grouped by brand partner, with each project's country and link."
         ),
         "parameters": {
             "type": "object",
@@ -486,6 +553,9 @@ def collect_sources(name: str, result: dict[str, Any]) -> list[dict[str, str]]:
         add(item.get("title"), item.get("url"))
     for item in result.get("projects") or []:
         add(item.get("name"), item.get("url"))
+    for group in (result.get("by_brand") or {}).values():  # the compact project view
+        for item in group:
+            add(item.get("name"), item.get("url"))
     if name == "get_listing":
         add(result.get("title"), result.get("url"))
     if name == "get_darglobal_project":

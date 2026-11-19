@@ -118,9 +118,9 @@ Latest run (Claude Sonnet 5.5 through the Anthropic API as both the model under 
 
 | Model | Answered | Checks passed | Grounded | Helpful | Median latency | Cost per question |
 |---|---|---|---|---|---|---|
-| Claude Sonnet 5.5 | 25/25 | 100% | 92% | 100% | 3.9 s | $0.016 |
+| Claude Sonnet 5.5 | 25/25 | 100% | 96% | 100% | 4.6 s | $0.017 |
 
-The two answers judged ungrounded each added one unsupported generalisation (for example "all are in Muscat" when one project lists only "AIDA"). They are listed in [`eval/results.md`](eval/results.md). Using the same model as subject and judge is a known weakness; a different judge model is a one-line change (`JUDGE_MODEL`).
+The one answer judged ungrounded added a generalisation the data only half supports ("most are in Muscat" when two projects list only "AIDA" as their city). Runs vary by an answer or two, so treat the percentages as approximate. They are listed in [`eval/results.md`](eval/results.md). Using the same model as subject and judge is a known weakness; a different judge model is a one-line change (`JUDGE_MODEL`).
 
 ## Run it
 

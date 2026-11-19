@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 10
     rate_limit_per_day: int = 100
     daily_cap_openrouter: int = 1500
-    daily_cap_anthropic: int = 400
+    daily_cap_anthropic: int = 100  # keeps the month near the $50 spend cap set on the API key
     max_message_chars: int = 2000
     max_history_messages: int = 12
 
