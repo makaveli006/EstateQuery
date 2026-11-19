@@ -46,7 +46,7 @@ The property data is a read-only SQLite file inside the image. Conversations are
 | Source | What is collected | How |
 |---|---|---|
 | darglobal.co.uk | 88 project, partner, collection and company pages from the site's sitemap (robots.txt allows them) | Real Chromium via Playwright, one page at a time with a pause |
-| wasalt.sa | A sample of sale and rent listings from the public listing sitemap | Real Chromium via Playwright, sequential and rate-limited |
+| wasalt.sa | 44 sale and rent listings drawn from the public listing sitemap | 13 by a rate-limited Playwright scraper, which Wasalt's bot check then stopped; 31 more opened by a person in a normal browser and saved by a read-only userscript |
 
 **Wasalt's published AI policy** ([llms.txt](https://wasalt.sa/llms.txt)) allows extracting public listing content at a moderate rate, forbids extracting contact details and redistribution, and requires attribution. The pipeline follows it:
 
@@ -56,7 +56,9 @@ The property data is a read-only SQLite file inside the image. Conversations are
 
 **DarGlobal enrichment.** Project pages are marketing prose, so one offline pass with Claude (structured outputs, a Pydantic schema) extracts country, city, property types, brand partner, status and amenities into a table. The model is instructed to copy only what the page states and leave the rest empty, so a blank means "the page does not say". This gave 44 structured projects from 47 project pages.
 
-**Known limitation: Wasalt sample size.** Wasalt sits behind Cloudflare, which presents a browser check to automated visits after a few pages. The scraper does not try to defeat it: it backs off and stops if the check does not clear. The Wasalt sample is therefore small (the exact count is shown in the UI header and at `/healthz`), and price statistics describe that sample, not the market. The tools and prompt say so in every statistical answer.
+**Known limitation: Wasalt sample size.** Wasalt sits behind Cloudflare, which shows a "verify you are human" check to automated visits after a few pages. The scraper does not try to defeat it: it backs off, and it stopped after 13 listings. To get a larger sample without evading the check, a person opened 31 more listing pages in their own Chrome, passing the check themselves when asked (none appeared). A small userscript, `tools/wasalt-collector.user.js`, saved the data of each page they viewed. It only reads the page in front of it, never loads, clicks or navigates, and keeps only an allowlist of property fields, never owner, agent or licence details. `estatequery wasalt-urls` builds the list of links to open from Wasalt's public sitemap, and `estatequery import-wasalt` runs the saved file through the same allowlist and phone-number scrubbing as the scraper, skipping duplicates.
+
+That makes **44 listings** (26 for sale, 18 for rent, mostly Riyadh and Jeddah). It is still a small sample, so price statistics describe it and not the market, and the tools and prompt say so in every statistical answer.
 
 ## Agent
 
@@ -118,9 +120,9 @@ Latest run (Claude Sonnet 5.5 through the Anthropic API as both the model under 
 
 | Model | Answered | Checks passed | Grounded | Helpful | Median latency | Cost per question |
 |---|---|---|---|---|---|---|
-| Claude Sonnet 5.5 | 25/25 | 100% | 96% | 100% | 4.6 s | $0.017 |
+| Claude Sonnet 5.5 | 25/25 | 100% | 92% | 100% | 4.0 s | $0.017 |
 
-The one answer judged ungrounded added a generalisation the data only half supports ("most are in Muscat" when two projects list only "AIDA" as their city). Runs vary by an answer or two, so treat the percentages as approximate. They are listed in [`eval/results.md`](eval/results.md). Using the same model as subject and judge is a known weakness; a different judge model is a one-line change (`JUDGE_MODEL`).
+The two answers judged ungrounded were a counting slip ("five" Jeddah projects, then six listed) and a loose grouping of the Oman projects. Runs vary by an answer or two between runs (the same set scored 96% a day earlier), so treat the percentages as approximate. They are listed in [`eval/results.md`](eval/results.md). Using the same model as subject and judge is a known weakness; a different judge model is a one-line change (`JUDGE_MODEL`).
 
 ## Run it
 
@@ -129,7 +131,9 @@ uv sync --all-groups
 cp .env.example .env                              # add OpenRouter, Anthropic and Langfuse keys
 uv run playwright install chromium
 uv run estatequery scrape-darglobal
-uv run estatequery scrape-wasalt --headed
+uv run estatequery scrape-wasalt --headed            # automated; Wasalt's bot check stops it early
+uv run estatequery wasalt-urls                       # or: build links to open by hand, then save them with the userscript
+uv run estatequery import-wasalt ~/Downloads/wasalt-collected.json
 uv run estatequery enrich                         # Claude extracts project facts
 uv run estatequery build-db
 uv run estatequery serve                          # chat UI at http://127.0.0.1:8000
@@ -169,7 +173,7 @@ cd ../.. && bash deploy/deploy.sh                 # build, ship and start the ap
 
 ```
 src/estatequery/
-  scrape/        wasalt.py, darglobal.py
+  scrape/        wasalt.py, wasalt_manual.py, darglobal.py
   ingest/        enrich.py (Claude), build_db.py (SQLite + FTS5)
   agent/         tools.py, prompts.py, loop.py, providers/{openrouter,anthropic}.py
   api/           app.py (FastAPI: JSON/SSE API, mounts the UI), limits.py
@@ -177,14 +181,15 @@ src/estatequery/
                  model_choice.py (per-visitor model)
   evals/         run.py
 eval/            questions.jsonl, results.md
-tests/           parser, tools, agent loop, rate limiter
-infra/terraform/ AWS infrastructure (EC2, security group, Elastic IP)
+tests/           parser, importer, collector userscript, tools, agent loop, rate limiter
+tools/           wasalt-collector.user.js (browser userscript for hand collection)
+infra/terraform/ AWS infrastructure (EC2, security group, Elastic IP, cost budget)
 deploy/          deploy.sh (build, ship, start), chat_history_schema.sql
 ```
 
 ## Limitations and next steps
 
-- **Wasalt coverage** is limited by the site's bot protection, as described above. An agreed data feed or API from Wasalt would remove the problem.
+- **Wasalt coverage** is 44 listings, limited by the site's bot protection and by how many pages a person will open by hand, as described above. An agreed data feed or API from Wasalt would remove the problem.
 - **Retrieval is lexical** (BM25). It works well at this corpus size because the model writes the search query, but embeddings would help vague questions.
 - **Advertiser-entered data is noisy** (for example implausible areas on some listings). Statistics use medians to dampen this; outlier filtering would be the next step.
 - **Stored conversations have no retention policy yet.** Visitors can delete their own chats from the sidebar; an automatic purge of old threads would be the next step.

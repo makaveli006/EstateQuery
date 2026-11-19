@@ -11,8 +11,9 @@ message box (next to send) switches between Claude Sonnet 5.5 (default) and Clau
 What the data covers
   - DarGlobal: 88 pages from darglobal.co.uk, with 44 projects extracted into structured
     facts (country, city, brand partner, status, amenities).
-  - Wasalt: a small sample of 13 public listings from wasalt.sa (sale and rent). Prices are
-    in SAR. Statistics describe this sample, not the whole Saudi market, and the answers say so.
+  - Wasalt: a small sample of 44 public listings from wasalt.sa (26 for sale, 18 for rent,
+    mostly Riyadh and Jeddah). Prices are in SAR. Statistics describe this sample, not the whole
+    Saudi market, and the answers say so.
 
 
 A. DARGLOBAL PROJECTS  (filters and lists over the structured project table)

@@ -9,6 +9,8 @@ COMMANDS = {
     "build-db": "Build the SQLite database from data/raw/*.jsonl.",
     "scrape-wasalt": "Sample and scrape public Wasalt listings.",
     "scrape-darglobal": "Scrape DarGlobal project, partner and company pages.",
+    "wasalt-urls": "Build a page of Wasalt listing links to open by hand (no automated visits).",
+    "import-wasalt": "Import listings saved by the Wasalt collector userscript.",
     "enrich": "Extract structured project facts from DarGlobal pages with Claude.",
     "eval": "Run the evaluation set against one or more models.",
 }
@@ -43,6 +45,14 @@ def main() -> None:
         from estatequery.scrape.wasalt import main as wasalt_main
 
         wasalt_main(rest)
+    elif command == "wasalt-urls":
+        from estatequery.scrape.wasalt_manual import urls_main
+
+        urls_main(rest)
+    elif command == "import-wasalt":
+        from estatequery.scrape.wasalt_manual import import_main
+
+        import_main(rest)
     elif command == "scrape-darglobal":
         from estatequery.scrape.darglobal import main as darglobal_main
 
