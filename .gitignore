@@ -21,7 +21,8 @@ htmlcov/
 
 # Tools and editors
 .playwright-mcp/
-.chainlit/
+.chainlit/*
+!.chainlit/config.toml
 .files/
 .idea/
 .vscode/
@@ -38,3 +39,12 @@ htmlcov/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Deployment secrets (SSH key, host details)
+deploy/.secrets/
+
+# Terraform: generated SSH key and local variable values
+infra/terraform/.secrets/
+
+# Full evaluation transcripts quote listing data; only the summary is published
+eval/results.json
