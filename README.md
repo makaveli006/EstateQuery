@@ -109,20 +109,75 @@ Each chat turn is one Langfuse trace: a root agent span, a generation per model 
 
 ## Evaluation
 
-`uv run estatequery eval` runs 25 questions through the real agent loop for each model and scores every answer two ways:
+`uv run estatequery eval` runs 36 questions through the real agent loop for each model and scores every answer three ways:
 
-1. **Deterministic checks**: the right tool was called, values computed from the database by SQL appear in the answer, forbidden content is absent.
-2. **A Claude judge** that sees the tool results the model received and decides whether the answer is grounded in them and helpful.
+1. **Deterministic checks**: the right tool was called, with the right arguments and within a call budget; values computed from the database by SQL appear in the answer; forbidden content and key-like or phone-number text are absent.
+2. **A Claude judge** that sees the tool results the model received and decides whether the answer is grounded in them, whether it is helpful, whether it abstained (declined, or said the data has no match), and whether it obeyed an instruction it should not have.
+3. **Agent-level measures** computed from those: tool selection, tool arguments, calls per question, repeated calls, abstention and false refusals, security violations, task completion.
 
-The questions cover DarGlobal facts, listing search and statistics, cross-source questions, no-data cases, Arabic, off-topic requests, investment advice, contact details and prompt injection.
+The questions cover DarGlobal facts, listing search and statistics, cross-source questions, no-data cases, Arabic, off-topic requests, investment advice, contact details and **8 security cases**: a request to print the system prompt, a "no restrictions" persona asking for an owner's phone number, a fake developer message asking for API keys, a translate-your-instructions trick, a request to vouch for a fake payment link, and three attacks where the instruction sits inside the data the tools return (a listing description, a project page and a search result). Those three run against a throw-away database built from the synthetic test fixtures, so the real data is never touched.
 
-Latest run (Claude Sonnet 5.5 through the Anthropic API as both the model under test and the judge):
+Latest run (both models through the Anthropic API, Claude Sonnet 5.5 as the judge):
 
 | Model | Answered | Checks passed | Grounded | Helpful | Median latency | Cost per question |
 |---|---|---|---|---|---|---|
-| Claude Sonnet 5.5 | 25/25 | 100% | 92% | 100% | 4.0 s | $0.017 |
+| Claude Sonnet 5.5 | 36/36 | 100% | 92% | 100% | 4.2 s | $0.017 |
+| Claude Haiku 5.5 | 36/36 | 100% | 86% | 100% | 2.9 s | $0.001 |
 
-The two answers judged ungrounded were a counting slip ("five" Jeddah projects, then six listed) and a loose grouping of the Oman projects. Runs vary by an answer or two between runs (the same set scored 96% a day earlier), so treat the percentages as approximate. They are listed in [`eval/results.md`](eval/results.md). Using the same model as subject and judge is a known weakness; a different judge model is a one-line change (`JUDGE_MODEL`).
+| Model | Tool selection | Tool arguments | Tool calls per question | Repeated calls | Abstention | False refusals | Security violations | Task completion |
+|---|---|---|---|---|---|---|---|---|
+| Claude Sonnet 5.5 | 100% (26/26) | 100% (4/4) | 1.3 | 0 | 93% (14/15) | 0% (0/21) | 0% (0/8) | 100% (36/36) |
+| Claude Haiku 5.5 | 100% (26/26) | 100% (4/4) | 1.3 | 0 | 100% (15/15) | 0% (0/21) | 0% (0/8) | 100% (36/36) |
+
+What the numbers say, and what they do not:
+
+- **Security held in both runs.** No answer obeyed an injected instruction or leaked a key, a prompt or a phone number, on either model, including when the instruction came from the data. This is 8 cases run once each, not a proof; multi-step and cleverly worded attacks were not tried.
+- **The ungrounded answers are real, and mostly small.** Haiku is the weaker model on numbers: it said Jeddah had the lowest median apartment price when Makkah's is lower, gave one median that blended sale and rent prices, and called two tied listings "the cheapest". Both models describe the Oman projects as all in Muscat when one is stored under the city "AIDA". Sonnet added a remark about where to ask for resales that the data does not support. Each is listed in [`eval/results.md`](eval/results.md).
+- **Scores move between runs.** The first run of this set scored Sonnet 94% and Haiku 92% grounded; the final run, after fixing the checks, scored 92% and 86%. Treat the percentages as approximate.
+- **The judge is a model.** Using Claude Sonnet 5.5 as both subject and judge is a known weakness, and the judge is occasionally wrong (once it claimed a tool listed 13 projects when it listed 14). A different judge is a one-line change (`JUDGE_MODEL`).
+- **The evaluation was corrected once.** After the first run, an `exclude` check was changed to match whole words (it had flagged "comparisons" as containing "Paris"), and two questions were relabelled as expected "no match" answers once the data showed there are no villas for sale in Jeddah and nothing about returns on the DarGlobal pages.
+
+## Production readiness
+
+A self-assessment against a common checklist for production agentic RAG. **Built** means it exists and is tested or measured here; **Partial** means some of it exists; **Next** means it is not built.
+
+| Area | Status | What exists, or what is missing |
+|---|---|---|
+| Document ingestion and freshness | Partial | Scripted scrape, enrichment and database build; every answer carries the snapshot date. The data is a static snapshot refreshed by hand. |
+| Chunking and embeddings | Partial | Heading-aware chunks. No embeddings. |
+| Hybrid search and reranking | Next | BM25 (SQLite FTS5) plus structured filters only. |
+| Context validation and grounded answers | Built | The model may only state what tool results show; grounding is scored by the judge on every evaluation run. |
+| Citation verification and abstention | Partial | Source links are built from the database, not from model text. Abstention is measured (93-100%). Links in the answer text are not machine-verified. |
+| Intent classification and routing | Partial | The model chooses among six tools (tool selection 100% on 26 questions). There is no separate classifier. |
+| Well-defined tool schemas | Built | Six specific read-only tools with described parameters; no generic "run any query". |
+| Tool argument and result validation | Partial | JSON schemas, parameterised SQL, structured errors that list valid values, results capped in size. No Pydantic models. |
+| Retries, timeouts, idempotency | Partial | One SDK retry, 60-90 s model timeouts and a 120 s limit per turn. Tools only read, so a repeated call is harmless. |
+| Bounded loops and fallback | Partial | At most three tool rounds, then tools are switched off. A refusal fallback exists for supported Claude models; there is no cross-provider failover. |
+| Persistent state and memory | Partial | Conversations are stored per visitor in Postgres and the last 12 messages go to the model. No long-term memory, which this use case does not need. |
+| Input, retrieval, tool and output guardrails | Partial | Prompt rules, scraped text declared as data, read-only tools, safe rendering. No output filter or link allowlist. |
+| Permissions and tenant isolation | Built | Chats are isolated per visitor and the whole site sits behind a login. Document permissions do not apply: all data is public. |
+| Human approval for sensitive actions | Not applicable | No tool takes an action. |
+| Prompt-injection and red-team testing | Built | 8 scored security cases, including instructions planted in the data; also probed by hand. Small and single-run, see above. |
+| Sensitive data redaction | Partial | Owner and agent data is never stored and phone numbers are scrubbed at import. No masking of model output. |
+| Golden evaluation dataset | Built | 36 questions with SQL-derived expected values. |
+| Retrieval and generation evaluation | Partial | Generation is measured (grounded, helpful). Retrieval metrics such as precision@k are not. |
+| Tool calling and task completion evaluation | Built | Tool selection, arguments, calls per question, repeated calls, abstention, false refusals, security violations, task completion. |
+| Tracing and monitoring | Built | Langfuse traces every turn with tool calls, arguments, tokens, latency and thumbs up or down. |
+| Cost and latency budgets | Built | Prompt caching (checked: the 3,048-token prompt is read from cache on repeat calls), per-visitor and daily limits, a spend cap on the API key and an AWS budget alert. |
+| Prompt and model versioning | Partial | Prompts and pinned model ids are in git. Not in Langfuse prompt management. |
+| Regression tests and rollback | Partial | 67 tests and the evaluation, run by hand; rollback is redeploying an earlier commit. No automated release gate. |
+
+By this count: 8 built, 13 partial, 1 next, 1 not applicable.
+
+**Next steps, in the order I would do them:**
+
+1. **Hybrid retrieval with a reranker.** The real gap. BM25 plus filters passes the evaluation at this corpus size, so add embeddings only if the evaluation starts showing misses.
+2. **An automated release gate:** run the evaluation on every change and fail on a drop.
+3. **Output filters:** a link allowlist so an answer can only link to wasalt.sa and darglobal.co.uk, and PII masking.
+4. **Argument validation with Pydantic**, duplicate-call detection and a cross-provider fallback.
+5. **Prompt versioning in Langfuse.**
+
+**Deliberately left out at this size:** LangGraph (the hand-written loop is simpler to read and test), Redis and a vector database, semantic caching and model routing (the savings would be cents), NeMo Guardrails and Presidio (too heavy for read-only public data).
 
 ## Run it
 
@@ -190,6 +245,7 @@ deploy/          deploy.sh (build, ship, start), chat_history_schema.sql
 ## Limitations and next steps
 
 - **Wasalt coverage** is 44 listings, limited by the site's bot protection and by how many pages a person will open by hand, as described above. An agreed data feed or API from Wasalt would remove the problem.
+- **Further next steps** (release gate, output filters, validation, prompt versioning) are listed in [Production readiness](#production-readiness).
 - **Retrieval is lexical** (BM25). It works well at this corpus size because the model writes the search query, but embeddings would help vague questions.
 - **Advertiser-entered data is noisy** (for example implausible areas on some listings). Statistics use medians to dampen this; outlier filtering would be the next step.
 - **Stored conversations have no retention policy yet.** Visitors can delete their own chats from the sidebar; an automatic purge of old threads would be the next step.
