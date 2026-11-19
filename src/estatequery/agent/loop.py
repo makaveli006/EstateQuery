@@ -25,8 +25,10 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from estatequery import observability
-from estatequery.agent.prompts import system_prompt
+from estatequery.agent.guard import GuardPolicy, StreamGuard, sanitize
+from estatequery.agent.prompts import system_prompt_and_info
 from estatequery.agent.providers import ProviderError, get_provider
+from estatequery.agent.providers.breaker import BREAKER, CircuitBreaker, fallback_specs
 from estatequery.agent.providers.base import Provider, StepDone, TextDelta, ToolCall, ToolResult, Usage
 from estatequery.agent.tools import TOOL_SPECS, collect_sources, run_tool
 from estatequery.config import ModelSpec, get_settings
@@ -66,16 +68,36 @@ def trim_history(history: list[dict[str, str]], limit: int) -> list[dict[str, st
     return clean
 
 
+def call_key(call: ToolCall) -> str | None:
+    """Identity of a call: the tool and its arguments, whatever order they were written in."""
+    if call.args is None:
+        return None
+    return f"{call.name}:{json.dumps(call.args, sort_keys=True, ensure_ascii=False, default=str)}"
+
+
+def _pack(call: ToolCall, result: dict[str, Any]) -> ToolResult:
+    text = json.dumps(result, ensure_ascii=False)
+    if len(text) > MAX_TOOL_RESULT_CHARS:
+        text = text[:MAX_TOOL_RESULT_CHARS] + ' ..."truncated"'
+    return ToolResult(call_id=call.id, name=call.name, content=text, is_error="error" in result)
+
+
 async def _execute(call: ToolCall, db_path: Path | None) -> tuple[ToolResult, dict[str, Any]]:
     if call.args is None:
         result: dict[str, Any] = {
             "error": "Tool arguments were not valid JSON. Call the tool again with a valid JSON object."}
     else:
         result = await asyncio.to_thread(run_tool, call.name, call.args, db_path)
-    text = json.dumps(result, ensure_ascii=False)
-    if len(text) > MAX_TOOL_RESULT_CHARS:
-        text = text[:MAX_TOOL_RESULT_CHARS] + ' ..."truncated"'
-    return ToolResult(call_id=call.id, name=call.name, content=text, is_error="error" in result), result
+    return _pack(call, result), result
+
+
+def _reuse_or_refuse(call: ToolCall, action: str, earlier: dict[str, Any] | None) -> ToolResult:
+    """The result for a call that did not run: the identical earlier result, or a refusal."""
+    if action == "reuse" and earlier is not None:
+        return _pack(call, {"note": "You already made this exact call in this conversation turn. "
+                                    "Its result is repeated here; do not call it again.", **earlier})
+    return _pack(call, {"error": "The tool-call budget for this question is used up. Answer with the "
+                                 "information you already have."})
 
 
 async def run_turn(
@@ -88,14 +110,31 @@ async def run_turn(
     provider: Provider | None = None,
     tags: list[str] | None = None,
     emit_tool_results: bool = False,
+    fallbacks: list[tuple[ModelSpec, Provider]] | None = None,
+    breaker: CircuitBreaker | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
+    breaker = breaker or BREAKER
+    # The model asked for, then the fallbacks in order. A model whose circuit is open is skipped.
+    chain: list[tuple[ModelSpec, Provider | None]] = [(spec, provider)] + (
+        fallbacks if fallbacks is not None else [(m, None) for m in fallback_specs(spec, settings.fallback_models)])
+    position = 0
+    while position + 1 < len(chain) and breaker.is_open(chain[position][0].id):
+        position += 1
+    active, active_provider = chain[position]
     started = time.monotonic()
     usage = Usage()
     sources: dict[str, dict[str, str]] = {}
     source_labels: set[str] = set()
     listings: dict[Any, dict[str, Any]] = {}
     tools_used: list[str] = []
+    cache: dict[str, dict[str, Any]] = {}      # raw result of every call that ran, by call_key
+    duplicate_calls = 0                        # identical repeats answered from the cache, not re-run
+    suppressed_calls = 0                       # calls refused because the budget was spent
+    guard_on = settings.output_guard
+    policy = GuardPolicy(allowed_domains=tuple(
+        d.strip().lower() for d in settings.allowed_link_domains.split(",") if d.strip()))
+    guard_removed: list[str] = []              # what the output guard took out of the answer
     answer = ""
     rounds = 0
     served_by: str | None = None
@@ -108,34 +147,63 @@ async def run_turn(
         metadata={"provider": spec.provider, "model": spec.api_model},
     )
 
-    try:
-        provider = provider or get_provider(spec)
-        session = provider.start(
-            model=spec.api_model,
-            system=system_prompt(db_path),
+    system_text, prompt_info = system_prompt_and_info(db_path)
+
+    def begin_session() -> Any:
+        return (active_provider or get_provider(active)).start(
+            model=active.api_model,
+            system=system_text,
             history=trim_history(history, settings.max_history_messages),
             user_message=user_message,
             tools=TOOL_SPECS,
         )
 
+    try:
+        session = begin_session()
+        if position:
+            yield {"type": "fallback", "from": spec.id, "to": active.id, "reason": "circuit open"}
+
         while True:
             allow_tools = rounds < settings.max_tool_rounds
-            generation = trace.generation(name=f"llm-call-{rounds + 1}", model=spec.api_model,
-                                          input={"round": rounds + 1, "tools_allowed": allow_tools})
+            generation = trace.generation(name=f"llm-call-{rounds + 1}", model=active.api_model,
+                                          input={"round": rounds + 1, "tools_allowed": allow_tools},
+                                          prompt=prompt_info.client)
             done: StepDone | None = None
+            stream_guard = StreamGuard(policy) if guard_on else None
+            shown_text = False
             try:
                 async for event in session.step(allow_tools=allow_tools):
                     if isinstance(event, TextDelta):
-                        yield {"type": "delta", "text": event.text}
+                        text = stream_guard.feed(event.text) if stream_guard else event.text
+                        if text:
+                            shown_text = True
+                            yield {"type": "delta", "text": text}
                     else:
                         done = event
+                if stream_guard and (tail := stream_guard.flush()):
+                    yield {"type": "delta", "text": tail}
             except ProviderError as exc:
                 generation.end(level="ERROR", status_message=str(exc))
+                if exc.retryable:
+                    breaker.record_failure(active.id)
+                # Switch models only while the user has seen nothing: the first call of the turn,
+                # before any text or tool row. Later failures are reported as they are.
+                if exc.retryable and rounds == 0 and not shown_text and position + 1 < len(chain):
+                    failed = active
+                    position += 1
+                    while position + 1 < len(chain) and breaker.is_open(chain[position][0].id):
+                        position += 1
+                    active, active_provider = chain[position]
+                    session = begin_session()
+                    log.warning("falling back from %s to %s: %s", failed.id, active.id, exc)
+                    yield {"type": "fallback", "from": failed.id, "to": active.id, "reason": str(exc)}
+                    continue
                 raise
             if done is None:
                 generation.end(level="ERROR", status_message="no response")
                 raise ProviderError("The model returned no response.")
 
+            breaker.record_success(active.id)
             usage.add(done.usage)
             served_by = done.model or served_by
             generation.end(
@@ -146,22 +214,54 @@ async def run_turn(
 
             if not done.tool_calls or not allow_tools:
                 answer = done.text
+                if guard_on:
+                    answer, guard_removed = sanitize(answer, policy)
                 break
 
             rounds += 1
             # Provider call ids can repeat across rounds, so qualify them with the round.
             call_ids = [f"r{rounds}-{index}-{call.id}" for index, call in enumerate(done.tool_calls)]
-            for call, call_id in zip(done.tool_calls, call_ids):
-                yield {"type": "tool_start", "call_id": call_id, "tool": call.name, "args": call.args or {}}
-            spans = [trace.tool(name=c.name, args=c.args) for c in done.tool_calls]
-            executed = await asyncio.gather(*(_execute(c, db_path) for c in done.tool_calls))
+
+            # Decide what each call needs: run it, reuse an identical earlier result, or refuse it
+            # because the turn's tool-call budget is spent. Only calls that run are shown and counted.
+            plan, running = [], {}
+            budget_left = settings.max_tool_calls - len(tools_used)
+            for index, call in enumerate(done.tool_calls):
+                key = call_key(call)
+                if key is not None and (key in cache or key in running):
+                    plan.append(("reuse", key))
+                    duplicate_calls += 1
+                elif budget_left <= 0:
+                    plan.append(("skip", key))
+                    suppressed_calls += 1
+                else:
+                    plan.append(("run", key))
+                    budget_left -= 1
+                    if key is not None:
+                        running[key] = index
+            for call, call_id, (action, _) in zip(done.tool_calls, call_ids, plan):
+                if action == "run":
+                    yield {"type": "tool_start", "call_id": call_id, "tool": call.name, "args": call.args or {}}
+            to_run = [c for c, (action, _) in zip(done.tool_calls, plan) if action == "run"]
+            fresh = iter(await asyncio.gather(*(_execute(c, db_path) for c in to_run)))
 
             results: list[ToolResult] = []
-            for call, call_id, span, (tool_result, raw) in zip(done.tool_calls, call_ids, spans, executed):
+            for call, call_id, (action, key) in zip(done.tool_calls, call_ids, plan):
+                if action != "run":
+                    results.append(_reuse_or_refuse(call, action, cache.get(key) if key else None))
+                    trace.tool(name=call.name, args=call.args).end(
+                        output={"note": action}, level="WARNING", metadata={"suppressed": action})
+                    continue
+                tool_result, raw = next(fresh)
+                span = trace.tool(name=call.name, args=call.args)
                 results.append(tool_result)
                 tools_used.append(call.name)
+                if key is not None:
+                    cache[key] = raw
                 span.end(output=raw, level="WARNING" if tool_result.is_error else None)
+                policy.trust_result(call.name, raw)
                 for src in collect_sources(call.name, raw):
+                    policy.trust_url(src["url"])
                     # One entry per page, and one per label: two links that read the same
                     # are noise in the sources line.
                     if src["url"] not in sources and src["title"].lower() not in source_labels:
@@ -186,18 +286,27 @@ async def run_turn(
         if listings:
             yield {"type": "listings", "items": list(listings.values())[-8:]}
         trace.finish(output=answer, metadata={"tool_rounds": rounds, "tools_used": tools_used,
-                                              "latency_ms": latency_ms})
+                                              "latency_ms": latency_ms, "duplicate_calls": duplicate_calls,
+                                              "suppressed_calls": suppressed_calls,
+                                              "guard_removed": guard_removed,
+                                              "served_model": active.id, "prompt_version": prompt_info.version,
+                                              "fallback_from": spec.id if active is not spec else None})
         yield {
             "type": "done",
             "answer": answer,
-            "model": spec.id,
+            "model": active.id,
+            "fallback_from": spec.id if active is not spec else None,
+            "prompt_version": prompt_info.version,
             "served_by": served_by,
-            "provider": spec.provider,
+            "provider": active.provider,
             "latency_ms": latency_ms,
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
             "tool_rounds": rounds,
             "tools_used": tools_used,
+            "duplicate_calls": duplicate_calls,
+            "suppressed_calls": suppressed_calls,
+            "guard_removed": guard_removed,
             "trace_id": trace.trace_id,
         }
     except ProviderError as exc:

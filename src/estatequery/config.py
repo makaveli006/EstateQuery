@@ -43,6 +43,26 @@ class Settings(BaseSettings):
 
     # Agent loop.
     max_tool_rounds: int = 3
+    # Output guard: links outside these domains (and outside the hosts the tools returned) and
+    # personal phone numbers and emails are removed from answers.
+    output_guard: bool = True
+    allowed_link_domains: str = "wasalt.sa,darglobal.co.uk"
+    # Models tried, in order, when the chosen one fails to start (rate limit, outage, network).
+    # Any model id from the registry works, including one from another provider.
+    fallback_models: str = "anthropic:claude-haiku-5-5"
+    # Where the system prompt comes from: "local" (the template in git) or "langfuse" (the version
+    # labelled `prompt_label` in Langfuse prompt management, with the local template as fallback).
+    prompt_source: str = "local"
+    prompt_name: str = "estatequery-system"
+    prompt_label: str = "production"
+    # Retrieval for search_darglobal: "bm25" (SQLite full-text, the default) or "hybrid" (BM25 and dense
+    # embeddings fused by rank, needs `uv sync --extra retrieval` and a database built with --embeddings).
+    # Reranking reorders the best few with a cross-encoder. Any problem falls back to BM25.
+    retrieval_mode: str = "bm25"
+    retrieval_rerank: bool = False
+    rerank_candidates: int = 8
+    model_cache_dir: Path = Path("data/models")
+    max_tool_calls: int = 8  # across all rounds of one question; repeats of an identical call do not count
 
     @property
     def db_path(self) -> Path:

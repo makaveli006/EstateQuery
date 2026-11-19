@@ -59,13 +59,14 @@ def test_tool_round_then_answer(db_path: Path) -> None:
         StepDone(text="Here are 3 listings.", usage=Usage(20, 5)),
     ])
     events = collect(provider, db_path)
-    types = [e["type"] for e in events]
-    assert types == ["tool_start", "tool_end", "delta", "sources", "listings", "done"]
+    types = [e["type"] for i, e in enumerate(events) if not (e["type"] == "delta" and events[i - 1]["type"] == "delta")]
+    assert types == ["tool_start", "tool_end", "delta", "sources", "listings", "done"]   # text may arrive in pieces
+    assert "".join(e["text"] for e in events if e["type"] == "delta") == "Here are 3 listings."
     done = events[-1]
     assert done["answer"] == "Here are 3 listings."
     assert done["tool_rounds"] == 1 and done["tools_used"] == ["search_listings"]
     assert done["input_tokens"] == 30 and done["output_tokens"] == 7
-    assert len(events[3]["items"]) == 3  # one source per matching listing
+    assert len(next(e for e in events if e["type"] == "sources")["items"]) == 3  # one source per matching listing
     assert '"total_matches": 3' in provider.session.results[0][0].content
 
 

@@ -21,7 +21,7 @@ from chainlit.utils import utc_now
 from estatequery import observability
 from estatequery.agent.loop import run_turn
 from estatequery.api.limits import get_limiter
-from estatequery.config import get_settings
+from estatequery.config import MODELS_BY_ID, get_settings
 from estatequery.ui.activity import Activity
 from estatequery.ui.identity import guest_identifier, new_visitor_id, visitor_from_cookie_header
 from estatequery.ui.model_choice import model_for
@@ -127,7 +127,7 @@ async def on_message(message: cl.Message) -> None:
                     footer.append("**Sources:** " + " · ".join(f"[{s['title']}]({s['url']})" for s in sources))
                 rounds = event["tool_rounds"]
                 footer.append(
-                    f"*{spec.label} · {event['latency_ms'] / 1000:.1f} s · "
+                    f"*{MODELS_BY_ID.get(event.get('model'), spec).label} · {event['latency_ms'] / 1000:.1f} s · "
                     f"{event['input_tokens'] + event['output_tokens']:,} tokens · "
                     f"{rounds} tool round{'' if rounds == 1 else 's'}*"
                 )

@@ -308,9 +308,20 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--raw-dir", type=Path, default=settings.raw_dir)
     parser.add_argument("--db", type=Path, default=settings.db_path)
     parser.add_argument("--snapshot", default=None, help="snapshot date (YYYY-MM-DD), default today")
+    parser.add_argument("--embeddings", action="store_true",
+                        help="also embed every passage for hybrid retrieval (needs: uv sync --extra retrieval)")
     args = parser.parse_args(argv)
     stats = build(args.raw_dir, args.db, args.snapshot)
     print(f"built {args.db}: " + ", ".join(f"{v} {k}" for k, v in stats.items()))
+    if args.embeddings:
+        from estatequery.retrieval import vectors
+
+        conn = sqlite3.connect(args.db)
+        try:
+            count = vectors.build(conn, progress=lambda done, total: print(f"  embedded {done}/{total}", flush=True))
+        finally:
+            conn.close()
+        print(f"stored {count} passage vectors ({vectors.EMBED_MODEL})")
 
 
 if __name__ == "__main__":

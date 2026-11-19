@@ -13,6 +13,8 @@ COMMANDS = {
     "import-wasalt": "Import listings saved by the Wasalt collector userscript.",
     "enrich": "Extract structured project facts from DarGlobal pages with Claude.",
     "eval": "Run the evaluation set against one or more models.",
+    "sync-prompt": "Copy the system prompt template into Langfuse prompt management as a new version.",
+    "eval-retrieval": "Compare BM25, dense, hybrid and reranked passage retrieval (needs --extra retrieval).",
 }
 
 
@@ -65,3 +67,26 @@ def main() -> None:
         from estatequery.evals.run import main as eval_main
 
         eval_main(rest)
+    elif command == "eval-retrieval":
+        from estatequery.evals.retrieval import main as retrieval_main
+
+        retrieval_main(rest)
+    elif command == "sync-prompt":
+        import argparse
+        import subprocess
+
+        from estatequery.agent.prompts import sync_prompt
+
+        parser = argparse.ArgumentParser(prog="estatequery sync-prompt")
+        parser.add_argument("--production", action="store_true",
+                            help="also label this version `production`, which PROMPT_SOURCE=langfuse serves")
+        args = parser.parse_args(rest)
+        try:
+            sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                                 check=True).stdout.strip() or None
+        except (OSError, subprocess.CalledProcessError):
+            sha = None
+        try:
+            print(sync_prompt(production=args.production, git_sha=sha))
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc

@@ -39,6 +39,7 @@ import anthropic
 from pydantic import BaseModel, Field
 
 from estatequery import observability
+from estatequery.evals import gate
 from estatequery.agent.loop import run_turn
 from estatequery.agent.prompts import system_prompt
 from estatequery.agent.tools import TOOL_SPECS, connect
@@ -51,6 +52,7 @@ FIXTURE_RAW = Path("tests/fixtures/raw")
 RESULTS_MD = Path("eval/results.md")
 RESULTS_JSON = Path("eval/results.json")
 CONCURRENCY = 3
+NEWLINE = chr(10)
 ABSTAIN_CATEGORIES = {"no-data", "boundaries"}   # questions the assistant should decline, or answer "no match" to
 TOOL_SUMMARY = json.dumps(
     [{"name": t["name"], "description": t["description"], "parameters": t["parameters"]["properties"]} for t in TOOL_SPECS],
@@ -230,7 +232,10 @@ async def run_one(spec: ModelSpec, question: dict[str, Any], judge_client: anthr
     row: dict[str, Any] = {
         "id": question["id"], "category": question["category"], "model": spec.id,
         "answer": answer, "error": error, "tools_used": tools_used,
-        "duplicate_calls": duplicate_calls(evidence),
+        "duplicate_calls": duplicate_calls(evidence) + done.get("duplicate_calls", 0),
+        "suppressed_calls": done.get("suppressed_calls", 0),
+        "prompt_version": done.get("prompt_version"),
+        "guard_removed": done.get("guard_removed", []),
         "expects_abstain": question.get("abstain", question["category"] in ABSTAIN_CATEGORIES),
         "needs_tools": bool(question.get("expect_tools")),
         "latency_ms": done.get("latency_ms"), "input_tokens": done.get("input_tokens", 0),
@@ -326,7 +331,8 @@ def write_report(summaries: list[dict[str, Any]], rows: list[dict[str, Any]], n_
         "# Evaluation results",
         "",
         f"Run on {date.today().isoformat()} with {n_questions} questions per model. "
-        f"Judge: `{JUDGE_MODEL}`. Regenerate with `uv run estatequery eval`.",
+        f"Judge: `{JUDGE_MODEL}`. Prompt: `{', '.join(sorted({r.get('prompt_version') or 'unknown' for r in rows}))}`. "
+        "Regenerate with `uv run estatequery eval`.",
         "",
         "| Model | Via | Answered | Checks passed | Grounded | Helpful | Median latency (s) | Cost per question |",
         "|---|---|---|---|---|---|---|---|",
@@ -379,7 +385,8 @@ def write_report(summaries: list[dict[str, Any]], rows: list[dict[str, Any]], n_
     RESULTS_JSON.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-async def run(model_ids: list[str], limit: int | None) -> None:
+async def run(model_ids: list[str], limit: int | None, gate_path: Path | None = None) -> bool:
+    """Run the evaluation. With `gate_path`, also check the thresholds and return whether they passed."""
     settings = get_settings()
     questions = [json.loads(line) for line in QUESTIONS_PATH.read_text(encoding="utf-8").splitlines() if line.strip()]
     if limit:
@@ -391,6 +398,7 @@ async def run(model_ids: list[str], limit: int | None) -> None:
     poisoned_db = build_poisoned_db(Path(scratch.name)) if any(q.get("db") == "poisoned" for q in questions) else None
     all_rows: list[dict[str, Any]] = []
     summaries: list[dict[str, Any]] = []
+    rows_by_model: dict[str, list[dict[str, Any]]] = {}
     try:
         for model_id in model_ids:
             spec = MODELS_BY_ID[model_id]
@@ -406,6 +414,7 @@ async def run(model_ids: list[str], limit: int | None) -> None:
 
             rows = await asyncio.gather(*(guarded(q) for q in questions))
             all_rows += rows
+            rows_by_model[model_id] = rows
             summaries.append(summarise(spec, rows))
     finally:
         conn.close()
@@ -415,6 +424,13 @@ async def run(model_ids: list[str], limit: int | None) -> None:
     print(f"\nwrote {RESULTS_MD} and {RESULTS_JSON}")
     for s in summaries:
         print(" ", s)
+    if gate_path is None:
+        return True
+    passed, report = gate.evaluate(rows_by_model, MODELS_BY_ID, gate.load_gate(gate_path))
+    with RESULTS_MD.open("a", encoding="utf-8") as fh:
+        fh.write(NEWLINE.join(report) + NEWLINE)
+    print(NEWLINE.join(report))
+    return passed
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -422,12 +438,19 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Evaluate the agent on the question set.")
     parser.add_argument("--models", default=",".join(default_models), help="comma-separated model ids")
     parser.add_argument("--limit", type=int, default=None, help="only the first N questions")
+    parser.add_argument("--gate", action="store_true",
+                        help="check the results against eval/gate.json and exit 1 if any threshold is missed")
+    parser.add_argument("--gate-file", type=Path, default=gate.GATE_PATH, help="thresholds file for --gate")
     args = parser.parse_args(argv)
+    if args.gate and args.limit:
+        raise SystemExit("--gate needs the full question set; drop --limit")
     model_ids = [m.strip() for m in args.models.split(",") if m.strip()]
     unknown = [m for m in model_ids if m not in MODELS_BY_ID]
     if unknown:
         raise SystemExit(f"unknown model ids: {unknown}. Known: {sorted(MODELS_BY_ID)}")
-    asyncio.run(run(model_ids, args.limit))
+    passed = asyncio.run(run(model_ids, args.limit, args.gate_file if args.gate else None))
+    if not passed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

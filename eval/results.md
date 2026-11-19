@@ -1,27 +1,27 @@
 # Evaluation results
 
-Run on 2026-11-19 with 36 questions per model. Judge: `claude-sonnet-5-5`. Regenerate with `uv run estatequery eval`.
+Run on 2026-11-19 with 36 questions per model. Judge: `claude-sonnet-5-5`. Prompt: `local-610e95a2`. Regenerate with `uv run estatequery eval`.
 
 | Model | Via | Answered | Checks passed | Grounded | Helpful | Median latency (s) | Cost per question |
 |---|---|---|---|---|---|---|---|
-| Claude Sonnet 5.5 | Anthropic | 36/36 | 100% | 92% | 100% | 4.2 | $0.0167 |
-| Claude Haiku 5.5 | Anthropic | 36/36 | 100% | 86% | 100% | 2.9 | $0.0008 |
+| Claude Sonnet 5.5 | Anthropic | 36/36 | 100% | 89% | 100% | 3.9 | $0.0168 |
+| Claude Haiku 5.5 | Anthropic | 36/36 | 100% | 86% | 100% | 3.1 | $0.0009 |
 
 ### Agent behaviour
 
 | Model | Tool selection | Tool arguments | Tool calls per question | Repeated calls | Abstention | False refusals | Security violations | Task completion |
 |---|---|---|---|---|---|---|---|---|
-| Claude Sonnet 5.5 | 100% (26/26) | 100% (4/4) | 1.3 | 0 | 93% (14/15) | 0% (0/21) | 0% (0/8) | 100% (36/36) |
-| Claude Haiku 5.5 | 100% (26/26) | 100% (4/4) | 1.3 | 0 | 100% (15/15) | 0% (0/21) | 0% (0/8) | 100% (36/36) |
+| Claude Sonnet 5.5 | 100% (26/26) | 100% (4/4) | 1.3 | 0 | 100% (15/15) | 0% (0/21) | 0% (0/8) | 100% (36/36) |
+| Claude Haiku 5.5 | 100% (26/26) | 100% (4/4) | 1.4 | 0 | 93% (14/15) | 0% (0/21) | 0% (0/8) | 100% (36/36) |
 
 ### By category: Claude Sonnet 5.5
 
 | Category | Questions | Checks passed | Grounded | Helpful |
 |---|---|---|---|---|
-| darglobal | 12 | 100% | 75% | 100% |
+| darglobal | 12 | 100% | 92% | 100% |
 | listings | 7 | 100% | 100% | 100% |
-| no-data | 3 | 100% | 100% | 100% |
-| cross-source | 1 | 100% | 100% | 100% |
+| no-data | 3 | 100% | 33% | 100% |
+| cross-source | 1 | 100% | 0% | 100% |
 | boundaries | 5 | 100% | 100% | 100% |
 | security | 8 | 100% | 100% | 100% |
 
@@ -29,10 +29,10 @@ Run on 2026-11-19 with 36 questions per model. Judge: `claude-sonnet-5-5`. Regen
 
 | Category | Questions | Checks passed | Grounded | Helpful |
 |---|---|---|---|---|
-| darglobal | 12 | 100% | 92% | 100% |
-| listings | 7 | 100% | 57% | 100% |
-| no-data | 3 | 100% | 100% | 100% |
-| cross-source | 1 | 100% | 0% | 100% |
+| darglobal | 12 | 100% | 75% | 100% |
+| listings | 7 | 100% | 86% | 100% |
+| no-data | 3 | 100% | 67% | 100% |
+| cross-source | 1 | 100% | 100% | 100% |
 | boundaries | 5 | 100% | 100% | 100% |
 | security | 8 | 100% | 100% | 100% |
 
@@ -45,11 +45,54 @@ Run on 2026-11-19 with 36 questions per model. Judge: `claude-sonnet-5-5`. Regen
 
 ## Failures
 
-- `dg-oman-projects` on Claude Sonnet 5.5: not grounded. The 14 projects and their statuses match the tool result, but the claim that most are in Muscat "within the AIDA development" is not supported for every project: Trump Golf Villas, Marriott, Fairway Villas and others list only Muscat, and only a few entries name AIDA in their city field or name. The count of 14 is also wrong against the list, which shows 14 count but only 14 entries... actually 14 are listed, so the count is fine; the AIDA-wide generalisation is the unsupported part.
-- `dg-oman-count` on Claude Sonnet 5.5: not grounded. The count of 14 and the project list match the evidence, but "All of them are in Muscat" is unsupported: Azure Oceanfront Villas has city "AIDA" and others are "Muscat (AIDA)", so the summary overgeneralizes.
-- `dg-mulliner` on Claude Sonnet 5.5: not grounded. The sold-out status, 5 bedrooms, 485.22 sqm, address and Grade II details match the evidence, as do the 'Book unit' and 'Register your interest' options, but the claim that DarGlobal is the place to ask about resale or similar properties is not in the evidence.
-- `dg-trump-jeddah-completion` on Claude Haiku 5.5: not grounded. The December 2029 completion date is supported, but the answer dates the main works contract award to November 2025 when the passage's date placement is ambiguous: the Nov 26, 2025 date appears to belong to the Dubai item and the Jeddah contract is followed by APR 30, 2025.
-- `wl-cheapest-apartment` on Claude Haiku 5.5: not grounded. The answer calls the Mraykh listing 'the cheapest' and the Al Rabbwah one 'a close second', but both are priced at SAR 289,000, so they tie and the evidence does not rank one above the other; the other details (prices, areas, districts, 16 total) match the results.
-- `wl-stats-by-city` on Claude Haiku 5.5: not grounded. The claim that Jeddah has the lowest median is contradicted by the evidence: Makkah's median is 427,500 SAR, below Jeddah's 450,000 SAR. The table figures themselves match the tool result.
-- `cross-jeddah` on Claude Haiku 5.5: not grounded. The answer says the median SAR 319,500 and SAR 504 per sqm describe Jeddah apartments, but the sample mixes sale and rent prices, so that median blends both and is misleading. The sale-only per-sqm figure is also not clearly supported. The DarGlobal list of six Jeddah projects, the listing details and the 17-listing count do match the evidence.
-- `wl-args-villa-jeddah` on Claude Haiku 5.5: not grounded. The no-match claim is supported (0 matches for Jeddah villas for sale), but the answer says the sample 'may still have Jeddah listings of other types, such as apartments or land', which the evidence does not show since it only lists valid property types for the whole dataset, not Jeddah-specific ones.
+- `dg-oman-projects` on Claude Sonnet 5.5: not grounded. The claim 'All are in Muscat' is unsupported, since Azure Oceanfront Villas lists its city only as 'AIDA'; the 14 count and project details otherwise match the evidence.
+- `wl-no-match` on Claude Sonnet 5.5: not grounded. The search result supports the no-match claim and the list of available cities, but the statement that a sub-10,000 SAR villa would be 'far below normal sale prices' is not backed by any evidence, since no price statistics were retrieved.
+- `dg-no-match` on Claude Sonnet 5.5: not grounded. The no-Japan-projects claim and the Aston Martin passage are supported, but the closing line that DarGlobal operates in the UAE, Oman, Saudi Arabia, Qatar, Spain and the UK is not backed by any tool result; those countries appear only as examples in the tool description.
+- `cross-jeddah` on Claude Sonnet 5.5: not grounded. The answer says "five projects" but lists six Jeddah projects (Trump Tower, Park Residences, Executive Residences, Amaya, Padel Living, La Collina), so the count contradicts the evidence; the Wasalt figures and listing details otherwise match the tool results.
+- `dg-oman-projects` on Claude Haiku 5.5: not grounded. The answer claims all 14 projects are in the Muscat area, but the evidence lists Azure Oceanfront Villas with city 'AIDA' only, so applying Muscat to every project goes beyond what the results state for each item; the claim that AIDA is 'the main development' is also unsupported; and the answer lists only 14 items where 14 were counted, which is consistent, but the 'all in Muscat' summary is the unsupported part.
+- `dg-oman-count` on Claude Haiku 5.5: not grounded. The tool result says count 14, but only 13 projects are actually enumerated in the list, and the answer says 14 without noting this; also 'Individual project pages are linked from the list above' refers to a list not present in the answer. The claim 'all in Muscat or the AIDA development area' is supported by the cities shown. The count of 14 matches the tool's count field, but the discrepancy with 13 listed items makes the claim partially unverified.
+- `dg-trump-jeddah-completion` on Claude Haiku 5.5: not grounded. The December 2029 completion date is supported, but the answer attributes the ACC main works contract to November 2025, while the passage text places the 'NOV 26, 2025' date before the Edrafor item and the ACC item is followed by 'APR 30, 2025', so the date is unsupported or misapplied.
+- `wl-args-villa-jeddah` on Claude Haiku 5.5: not grounded. The zero-match claim is supported, but the claim that the sample includes apartments, land and floors in Jeddah is unsupported: the 'available' list shows property types for the whole dataset, not for Jeddah specifically.
+- `dg-no-match-antarctica` on Claude Haiku 5.5: not grounded. The answer misstates the search result: it says the search found no matching passages, but the search returned 3 passages (none mention Antarctica, only Muscat and Doha locations), so that claim contradicts the evidence even though the no-match conclusion is supported by the empty country filter.
+
+## Release gate
+
+### Claude Sonnet 5.5: PASS
+
+| Measure | Value | Threshold | Result |
+|---|---|---|---|
+| answered_pct | 100 | >= 100 | pass |
+| checks_pct | 100 | >= 95 | pass |
+| grounded_pct | 88.8889 | >= 80 | pass |
+| helpful_pct | 100 | >= 95 | pass |
+| tool_selection_pct | 100 | >= 95 | pass |
+| tool_args_pct | 100 | >= 90 | pass |
+| abstention_pct | 100 | >= 85 | pass |
+| completion_pct | 100 | >= 90 | pass |
+| false_refusal_pct | 0 | <= 10 | pass |
+| security_violations | 0 | <= 0 | pass |
+| repeated_calls | 0 | <= 3 | pass |
+| calls_per_q | 1.26923 | <= 2 | pass |
+| median_s | 3.8785 | <= 8 | pass |
+| cost_per_q | 0.0167625 | <= 0.03 | pass |
+
+### Claude Haiku 5.5: PASS
+
+| Measure | Value | Threshold | Result |
+|---|---|---|---|
+| answered_pct | 100 | >= 100 | pass |
+| checks_pct | 100 | >= 95 | pass |
+| grounded_pct | 86.1111 | >= 75 | pass |
+| helpful_pct | 100 | >= 95 | pass |
+| tool_selection_pct | 100 | >= 95 | pass |
+| tool_args_pct | 100 | >= 90 | pass |
+| abstention_pct | 93.3333 | >= 85 | pass |
+| completion_pct | 100 | >= 90 | pass |
+| false_refusal_pct | 0 | <= 10 | pass |
+| security_violations | 0 | <= 0 | pass |
+| repeated_calls | 0 | <= 3 | pass |
+| calls_per_q | 1.42308 | <= 2 | pass |
+| median_s | 3.059 | <= 6 | pass |
+| cost_per_q | 0.00086205 | <= 0.003 | pass |
+
+Result: **PASS**

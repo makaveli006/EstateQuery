@@ -1,0 +1,23 @@
+{"id": "ceo", "kind": "keyword", "query": "Ziad El Chaar CEO", "relevant_when": [["Ziad El Chaar"]]}
+{"id": "lse", "kind": "keyword", "query": "London Stock Exchange listing", "relevant_when": [["London Stock Exchange"]]}
+{"id": "golden-visa", "kind": "keyword", "query": "golden visa 2 million AED", "relevant_when": [["Golden Visa"]]}
+{"id": "astera", "kind": "keyword", "query": "Aston Martin interiors Al Marjan Island", "relevant_when": [["Aston Martin", "Al Marjan"]]}
+{"id": "jeddah-completion", "kind": "keyword", "query": "Trump Tower Jeddah completion date", "relevant_when": [["Trump Tower Jeddah", "completion"]]}
+{"id": "missoni-spain", "kind": "keyword", "query": "Missoni Costa del Sol villas", "relevant_when": [["Missoni", "Costa del Sol"], ["Missoni", "Marbella"]]}
+{"id": "elie-saab-doha", "kind": "keyword", "query": "Elie Saab Doha residences", "relevant_when": [["Elie Saab", "Doha"]]}
+{"id": "mouawad-riyadh", "kind": "keyword", "query": "Mouawad villas Riyadh", "relevant_when": [["Mouawad", "Riyadh"]]}
+{"id": "lamborghini-spain", "kind": "keyword", "query": "Lamborghini villas Benahavis", "relevant_when": [["Lamborghini", "Benahavis"]]}
+{"id": "mulliner", "kind": "keyword", "query": "Mulliner Piccadilly apartment", "relevant_when": [["Mulliner", "Piccadilly"]]}
+{"id": "tokenization", "kind": "keyword", "query": "tokenization fractional ownership", "relevant_when": [["tokeni"]]}
+{"id": "w-dubai", "kind": "keyword", "query": "W Residences Downtown Dubai", "relevant_when": [["W Residences", "Downtown"]]}
+{"id": "paramount", "kind": "keyword", "query": "Paramount partnership", "relevant_when": [["Paramount"]]}
+{"id": "fendi-azure", "kind": "keyword", "query": "Fendi Casa oceanfront villas", "relevant_when": [["Fendi Casa", "oceanfront"], ["Fendi Casa", "azure"]]}
+{"id": "residency", "kind": "semantic", "query": "can a foreign buyer get long-term residency by purchasing property", "relevant_when": [["Golden Visa", "10-year"], ["10-year", "visa"]]}
+{"id": "public-company", "kind": "semantic", "query": "is the company publicly traded", "relevant_when": [["Stock Exchange"]]}
+{"id": "beach-villas", "kind": "semantic", "query": "waterfront houses facing the sea in Muscat", "relevant_when": [["Oman", "beachfront"], ["Oman", "oceanfront"], ["Oman", "sea view"], ["Oman", "sea-view"]]}
+{"id": "rentable", "kind": "semantic", "query": "hotel managed apartments that earn rental income", "relevant_when": [["Marriott", "rental"], ["hotel", "rental income"], ["Hotel", "management", "rent"]]}
+{"id": "who-leads", "kind": "semantic", "query": "who runs the business", "relevant_when": [["Chief Executive"], ["CEO"]]}
+{"id": "car-brands", "kind": "semantic", "query": "which supercar manufacturers put their name on homes", "relevant_when": [["Automobili Lamborghini"], ["Pagani Automobili"], ["Aston Martin Lagonda"]]}
+{"id": "penthouses", "kind": "semantic", "query": "very expensive one-off mansions and penthouses", "relevant_when": [["penthouse", "sqm"]]}
+{"id": "sold-out", "kind": "semantic", "query": "which developments are already finished and no longer available", "relevant_when": [["sold out"], ["Sold out"], ["Completed"]]}
+{"id": "london", "kind": "semantic", "query": "London property by the developer", "relevant_when": [["Old Park Lane"], ["Grade II"]]}

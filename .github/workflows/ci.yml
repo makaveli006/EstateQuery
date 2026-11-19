@@ -1,0 +1,24 @@
+# Runs the offline test suite on every push and pull request. It needs no secrets and makes no
+# model calls. The evaluation gate (`estatequery eval --gate`) costs API money and needs the
+# Anthropic key, so it runs from deploy/deploy.sh on the developer's machine, not here: putting
+# that key into a public repository's Actions secrets is not worth the exposure.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install locked dependencies (with the retrieval extra, so its tests run)
+        run: uv sync --frozen --extra retrieval
+      - name: Run the tests
+        run: uv run --frozen --extra retrieval pytest -q

@@ -1,12 +1,29 @@
-"""System prompt. Built once from the database so it states what data actually exists."""
+"""System prompt. Rendered from the database so it states what data actually exists.
+
+The template lives in git and is the source of truth. Every turn records a short content hash of
+it (`prompt_version`) in its trace, so any answer or evaluation score can be tied to the exact
+prompt that produced it. `estatequery sync-prompt` copies the template into Langfuse prompt
+management, and `PROMPT_SOURCE=langfuse` serves the version labelled `production` from there,
+falling back to the template below on any failure. The default is the local template.
+"""
 
 from __future__ import annotations
 
+import hashlib
+import logging
+import re
 import sqlite3
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
+from estatequery import observability
 from estatequery.agent.tools import connect
+from estatequery.config import get_settings
+
+log = logging.getLogger("estatequery.prompts")
+VARIABLES = ("listings", "snapshot", "cities", "pages")
 
 TEMPLATE = """You are EstateQuery, a real-estate assistant. You answer from two datasets that you reach only through your tools:
 
@@ -43,22 +60,102 @@ def _scalar(conn: sqlite3.Connection, sql: str, default: str = "0") -> str:
         return default
 
 
-@lru_cache
-def system_prompt(db_path: Path | None = None) -> str:
+def template_hash(template: str) -> str:
+    return hashlib.sha256(template.encode("utf-8")).hexdigest()[:8]
+
+
+def prompt_version() -> str:
+    """Identity of the local template: changes whenever the prompt text changes."""
+    return f"local-{template_hash(TEMPLATE)}"
+
+
+def to_langfuse(template: str) -> str:
+    """Langfuse writes variables as {{name}}; the template here uses {name}."""
+    return re.sub(r"\{(\w+)\}", r"{{\1}}", template)
+
+
+def from_langfuse(text: str) -> str:
+    return re.sub(r"\{\{(\w+)\}\}", r"{\1}", text)
+
+
+@dataclass(frozen=True)
+class PromptInfo:
+    source: str                 # "local" or "langfuse"
+    version: str                # recorded on every trace and evaluation row
+    client: Any = None          # the Langfuse prompt object, so a trace can link to the version
+
+
+def _renders(template: str) -> bool:
+    """A template fetched from outside is only used if it fills in with the known variables."""
+    try:
+        template.format(**{name: "x" for name in VARIABLES})
+        return True
+    except (KeyError, IndexError, ValueError):
+        return False
+
+
+def current_prompt() -> tuple[str, PromptInfo]:
+    """The template to use right now, and where it came from."""
+    local = (TEMPLATE, PromptInfo("local", prompt_version()))
+    settings = get_settings()
+    if settings.prompt_source != "langfuse":
+        return local
+    client = observability.fetch_prompt(settings.prompt_name, settings.prompt_label, to_langfuse(TEMPLATE))
+    if client is None or getattr(client, "is_fallback", False):
+        log.warning("Langfuse prompt unavailable; using the local template")
+        return local
+    template = from_langfuse(str(client.prompt))
+    if not _renders(template):
+        log.warning("Langfuse prompt %s v%s does not render; using the local template",
+                    settings.prompt_name, getattr(client, "version", "?"))
+        return local
+    return template, PromptInfo("langfuse", f"langfuse-v{client.version}-{template_hash(template)}", client)
+
+
+def sync_prompt(*, production: bool = False, git_sha: str | None = None) -> str:
+    """Copy the local template into Langfuse as a new version, only when its text changed.
+
+    `production` also makes that version the one served to `PROMPT_SOURCE=langfuse`.
+    Returns a one-line report.
+    """
+    name = get_settings().prompt_name
+    text = to_langfuse(TEMPLATE)
+    labels = ([f"git-{git_sha}"] if git_sha else []) + (["production"] if production else [])
+    latest = observability.latest_prompt(name)
+    if latest is not None and latest[0] == text:
+        if production:
+            observability.label_prompt(name, latest[1], ["production"])
+            return f"{name}: unchanged at version {latest[1]}; labelled production"
+        return f"{name}: unchanged at version {latest[1]}; nothing to do"
+    version = observability.push_prompt(name, text, labels, f"Template {template_hash(TEMPLATE)}")
+    return f"{name}: created version {version}" + (" (production)" if production else "")
+
+
+@lru_cache(maxsize=16)
+def _render(template: str, db_path: Path | None) -> str:
     try:
         conn = connect(db_path)
     except sqlite3.Error:
-        return TEMPLATE.format(listings="0", snapshot="unknown", cities="none", pages="0")
+        return template.format(listings="0", snapshot="unknown", cities="none", pages="0")
     try:
         cities = [r[0] for r in conn.execute(
             "SELECT city FROM listings WHERE city IS NOT NULL GROUP BY city ORDER BY COUNT(*) DESC LIMIT 8")]
-        return TEMPLATE.format(
+        return template.format(
             listings=_scalar(conn, "SELECT COUNT(*) FROM listings"),
             snapshot=_scalar(conn, "SELECT value FROM meta WHERE key='snapshot_date'", "unknown"),
             cities=", ".join(cities) or "none",
             pages=_scalar(conn, "SELECT COUNT(*) FROM pages"),
         )
     except sqlite3.Error:
-        return TEMPLATE.format(listings="0", snapshot="unknown", cities="none", pages="0")
+        return template.format(listings="0", snapshot="unknown", cities="none", pages="0")
     finally:
         conn.close()
+
+
+def system_prompt_and_info(db_path: Path | None = None) -> tuple[str, PromptInfo]:
+    template, info = current_prompt()
+    return _render(template, db_path), info
+
+
+def system_prompt(db_path: Path | None = None) -> str:
+    return system_prompt_and_info(db_path)[0]

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import sqlite3
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Literal
@@ -19,6 +20,7 @@ from estatequery.agent.loop import run_turn
 from estatequery.agent.tools import connect
 from estatequery.api.limits import get_limiter
 from estatequery.config import get_model, get_settings, listed_models
+from estatequery.retrieval.search import status as retrieval_status, warm_up
 from estatequery.ui.identity import COOKIE_MAX_AGE, VISITOR_COOKIE, new_visitor_id, visitor_from_cookie_header
 from estatequery.ui.model_choice import choices, default_model, find_available, model_for
 
@@ -84,11 +86,23 @@ def sse(event: dict[str, Any]) -> str:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    app_log = logging.getLogger("estatequery")
+    if not app_log.handlers:        # uvicorn only configures its own loggers; show the app's at INFO too
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
+        app_log.addHandler(handler)
+        app_log.setLevel(logging.INFO)
+        app_log.propagate = False
     info = dataset_info()
     if info.get("ready"):
         log.info("dataset ready: %s", info)
     else:
         log.warning("database not found at %s; run `estatequery build-db`", get_settings().db_path)
+    settings = get_settings()
+    if settings.retrieval_mode == "hybrid":
+        # In the background: the app serves requests at once, and searches use BM25 until the models load.
+        threading.Thread(target=warm_up, args=(settings.db_path,), kwargs={"rerank": settings.retrieval_rerank},
+                         daemon=True, name="retrieval-warmup").start()
     yield
     observability.flush()
 
@@ -112,6 +126,7 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> JSONResponse:
         info = dataset_info()
+        info["retrieval"] = retrieval_status(get_settings().retrieval_mode)
         return JSONResponse({"status": "ok" if info.get("ready") else "no-data", **info},
                             status_code=200 if info.get("ready") else 503)
 

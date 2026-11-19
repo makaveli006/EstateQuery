@@ -20,6 +20,13 @@ dependencies = [
 [project.scripts]
 estatequery = "estatequery:main"
 
+[project.optional-dependencies]
+# Local embeddings and a cross-encoder for hybrid retrieval (see README, "Retrieval"). Not installed
+# by the Docker image unless the image is built with this extra.
+retrieval = [
+    "fastembed==0.9.1",
+]
+
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]
 build-backend = "uv_build"

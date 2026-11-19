@@ -15,8 +15,10 @@ from statistics import median
 from typing import Any, Callable
 from urllib.parse import urlparse
 
+from estatequery.agent.validation import validate_args
 from estatequery.config import get_settings
 from estatequery.normalize import canonical_country
+from estatequery.retrieval.search import ranked_ids
 
 WASALT_SOURCE = "Wasalt.sa"
 MAX_LISTINGS = 8
@@ -334,24 +336,25 @@ def search_darglobal(conn: sqlite3.Connection, args: dict[str, Any]) -> dict[str
     if not query:
         return {"error": "query is required"}
     limit = max(1, min(int(args.get("limit") or 4), MAX_PASSAGES))
-    rows: list[sqlite3.Row] = []
-    for joiner in ("AND", "OR"):
-        match = fts_query(query, joiner)
-        if not match:
-            break
-        rows = conn.execute(
-            "SELECT c.title, c.heading, c.text, c.url FROM chunks_fts f JOIN chunks c ON c.id = f.rowid "
-            "WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts, 4.0, 2.0, 1.0) LIMIT ?",
-            (match, limit),
-        ).fetchall()
-        if rows:
-            break
+    settings = get_settings()
+    ids, mode = ranked_ids(conn, query, limit, mode=settings.retrieval_mode, rerank=settings.retrieval_rerank,
+                           rerank_candidates=settings.rerank_candidates)
+    found = {}
+    if ids:
+        marks = ",".join("?" for _ in ids)
+        found = {r["id"]: r for r in conn.execute(
+            f"SELECT id, title, heading, text, url FROM chunks WHERE id IN ({marks})", ids)}
     passages = []
-    for r in rows:
-        item = clean_number(r)
+    for chunk_id in ids:
+        if chunk_id not in found:
+            continue
+        item = clean_number(found[chunk_id])
+        item.pop("id", None)
         item["text"] = item["text"][:800]
         passages.append(item)
     result: dict[str, Any] = {"returned": len(passages), "passages": passages, "source": "darglobal.co.uk"}
+    if mode != "bm25":
+        result["retrieval"] = mode
     if not passages:
         result["hint"] = "No passages matched. Try different keywords or call list_darglobal_projects."
     return result
@@ -503,6 +506,9 @@ def run_tool(name: str, args: dict[str, Any] | None, db_path: Path | None = None
         return {"error": f"Unknown tool '{name}'. Available: {sorted(_HANDLERS)}"}
     if not isinstance(args, dict):
         return {"error": "Tool arguments must be a JSON object."}
+    args, problem = validate_args(name, args)
+    if problem is not None:
+        return problem
     try:
         conn = connect(db_path)
     except sqlite3.Error as exc:

@@ -83,8 +83,9 @@ class TurnTrace:
             log.debug("Langfuse child span failed", exc_info=True)
             return _Observation(None)
 
-    def generation(self, *, name: str, model: str, input: Any) -> _Observation:
-        return self._child(name=name, as_type="generation", model=model, input=input)
+    def generation(self, *, name: str, model: str, input: Any, prompt: Any = None) -> _Observation:
+        extra = {"prompt": prompt} if prompt is not None else {}   # links the call to a Langfuse prompt version
+        return self._child(name=name, as_type="generation", model=model, input=input, **extra)
 
     def tool(self, *, name: str, args: Any) -> _Observation:
         return self._child(name=name, as_type="tool", input=args)
@@ -114,6 +115,54 @@ def score(trace_id: str, name: str, value: float | str, comment: str | None = No
     except Exception:  # noqa: BLE001
         log.debug("Langfuse score failed", exc_info=True)
         return False
+
+
+# ---------------------------------------------------------------------------- prompt management
+
+def fetch_prompt(name: str, label: str, fallback_text: str) -> Any | None:
+    """The prompt version carrying `label`, or None when Langfuse is off or unreachable.
+
+    Langfuse caches it for five minutes and returns the fallback text, marked `is_fallback`,
+    when the first fetch fails; callers treat that like None.
+    """
+    client = _langfuse()
+    if client is None:
+        return None
+    try:
+        return client.get_prompt(name, label=label, type="text", cache_ttl_seconds=300, fallback=fallback_text,
+                                 max_retries=1, fetch_timeout_seconds=3)
+    except Exception:  # noqa: BLE001 - a prompt fetch must never break a chat turn
+        log.warning("Langfuse prompt fetch failed", exc_info=True)
+        return None
+
+
+def latest_prompt(name: str) -> tuple[str, int] | None:
+    """(text, version) of the newest version of a prompt, or None when it does not exist yet."""
+    client = _langfuse()
+    if client is None:
+        raise RuntimeError("Langfuse keys are not configured")
+    try:
+        found = client.get_prompt(name, label="latest", type="text", cache_ttl_seconds=0, max_retries=1)
+    except Exception as exc:  # noqa: BLE001 - the SDK raises a not-found error for a new prompt
+        if "not found" in str(exc).lower() or "404" in str(exc):
+            return None
+        raise
+    return str(found.prompt), int(found.version)
+
+
+def push_prompt(name: str, text: str, labels: list[str], message: str) -> int:
+    client = _langfuse()
+    if client is None:
+        raise RuntimeError("Langfuse keys are not configured")
+    created = client.create_prompt(name=name, prompt=text, labels=labels, type="text", commit_message=message)
+    return int(created.version)
+
+
+def label_prompt(name: str, version: int, labels: list[str]) -> None:
+    client = _langfuse()
+    if client is None:
+        raise RuntimeError("Langfuse keys are not configured")
+    client.update_prompt(name=name, version=version, new_labels=labels)
 
 
 def flush() -> None:

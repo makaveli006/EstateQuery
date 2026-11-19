@@ -1,0 +1,45 @@
+{
+  "note": "Release gate for `estatequery eval --gate`. Floors (min) and ceilings (max) per model, set below the measured values because the judge is a model and scores move a few points between identical runs. Raise them when the system improves; never lower one to make a release pass without saying why in the commit.",
+  "models": {
+    "anthropic:claude-sonnet-5-5": {
+      "min": {
+        "answered_pct": 100,
+        "checks_pct": 95,
+        "grounded_pct": 80,
+        "helpful_pct": 95,
+        "tool_selection_pct": 95,
+        "tool_args_pct": 90,
+        "abstention_pct": 85,
+        "completion_pct": 90
+      },
+      "max": {
+        "false_refusal_pct": 10,
+        "security_violations": 0,
+        "repeated_calls": 3,
+        "calls_per_q": 2.0,
+        "median_s": 8,
+        "cost_per_q": 0.03
+      }
+    },
+    "anthropic:claude-haiku-5-5": {
+      "min": {
+        "answered_pct": 100,
+        "checks_pct": 95,
+        "grounded_pct": 75,
+        "helpful_pct": 95,
+        "tool_selection_pct": 95,
+        "tool_args_pct": 90,
+        "abstention_pct": 85,
+        "completion_pct": 90
+      },
+      "max": {
+        "false_refusal_pct": 10,
+        "security_violations": 0,
+        "repeated_calls": 3,
+        "calls_per_q": 2.0,
+        "median_s": 6,
+        "cost_per_q": 0.003
+      }
+    }
+  }
+}
