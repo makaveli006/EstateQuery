@@ -18,5 +18,17 @@
 		flush_interval -1
 		# The application never needs the login; do not hand it the credentials.
 		header_up -Authorization
+
+		# Chainlit answers /user with its own 401 until its session cookie exists. A browser that
+		# gets a 401 for a request carrying Basic credentials discards those credentials, so the
+		# sign-in dialog came back in a loop on a first visit. Pass such answers on as 403: the
+		# page treats both the same way (it signs the visitor in), and the browser keeps the login.
+		@app_401 status 401
+		handle_response @app_401 {
+			copy_response_headers {
+				exclude WWW-Authenticate
+			}
+			copy_response 403
+		}
 	}
 }
